@@ -25,7 +25,7 @@ Abre la URL local en Chrome/Edge. Con el emulador de WebXR instalado verás el b
 
 El suelo y la iluminación usan assets reales CC0 de [Poly Haven](https://polyhaven.com), descargados por `scripts/download-assets.sh` (no se commitean al repo por su peso):
 
-- **HDRI** [grasslands_sunset](https://polyhaven.com/a/grasslands_sunset) (4K) — pradera al atardecer, iluminación por imagen (IBL) + fondo/reflejos
+- **HDRI** [belfast_sunset_puresky](https://polyhaven.com/a/belfast_sunset_puresky) (4K) — atardecer, iluminación por imagen (IBL) + fondo/reflejos. Es un **"pure sky"**: solo cielo, sin nada terrestre. Se cambió por eso — el anterior (`grasslands_sunset`) era un parque real y metía galpones, un alambrado y edificios en el horizonte, imposibles en una escena charrúa. El horizonte lo cierra ahora el monte nativo generado por código (tres capas a distinta distancia, cada una más fría y clara: perspectiva atmosférica). El cielo se rota (`SUN_AZIMUTH`) para traer el poniente al encuadre, y la luz direccional se alinea con ese mismo valor para que sombras y resplandor coincidan.
 - **Textura PBR** [grass_ground](https://polyhaven.com/a/grass_ground) (4K: difuso, normal, ARM, desplazamiento) — suelo con relieve geométrico real, no solo normal mapping
 
 Para cambiar el entorno, edita las URLs en `scripts/download-assets.sh` por cualquier otro asset CC0 de Poly Haven (buscar el `slug` en polyhaven.com y usar la misma estructura de URL).

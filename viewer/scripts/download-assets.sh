@@ -8,9 +8,13 @@ HDRI_DIR="public/assets/hdri"
 TEX_DIR="public/assets/textures/grass_ground"
 mkdir -p "$HDRI_DIR" "$TEX_DIR"
 
-echo "Descargando HDRI 4K (grasslands_sunset — pradera, CC0 Poly Haven)..."
-curl -sS -L -o "$HDRI_DIR/grasslands_sunset_4k.hdr" \
-  "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/4k/grasslands_sunset_4k.hdr"
+# "pure sky" = SOLO cielo, sin nada terrestre. Se cambió a este porque el
+# anterior (grasslands_sunset) era un parque real y metía galpones, un
+# alambrado y edificios en el horizonte, imposibles en una escena charrúa.
+# El horizonte lo cierra ahora el monte nativo generado en main.js.
+echo "Descargando HDRI 4K (qwantani_sunset_puresky — cielo puro, CC0 Poly Haven)..."
+curl -sS -L -o "$HDRI_DIR/qwantani_sunset_puresky_4k.hdr" \
+  "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/4k/qwantani_sunset_puresky_4k.hdr"
 
 echo "Descargando set PBR 4K (grass_ground, CC0 Poly Haven)..."
 curl -sS -L -o "$TEX_DIR/diff_4k.jpg" \

@@ -8,7 +8,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 0.92; // recupera color en el cielo de atardecer
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -23,22 +23,44 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // --- Scene ------------------------------------------------------------
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x1a1a0f, 0.008);
+// Niebla en tono cálido de atardecer (no el pardo oscuro anterior): funde
+// el monte lejano con el cielo del HDRI en vez de recortarlo contra él.
+scene.fog = new THREE.FogExp2(0xc8b89a, 0.013);
 
-// --- HDRI: pradera charrúa al atardecer (IBL) + fondo ----------------------
-// grasslands_sunset_4k.hdr — CC0, Poly Haven (polyhaven.com/a/grasslands_sunset)
+// --- HDRI: cielo puro de atardecer (IBL) + fondo ---------------------------
+// belfast_sunset_puresky_4k.hdr — CC0, Poly Haven.
+// Es un HDRI "pure sky": SOLO cielo, sin nada terrestre. Se eligió por eso:
+// el anterior (grasslands_sunset) era un parque real y metía galpones, un
+// alambrado y edificios en el horizonte, imposibles en una escena charrúa.
+// El horizonte lo cierra ahora vegetación nativa propia (ver "monte lejano").
+// Entre los pure sky se tomó éste por el sol dorado bajo: los de crepúsculo
+// dejaban la escena casi de noche y el de mediodía la aplanaba.
+// Rotación del cielo para traer el poniente hacia -Z (de frente a la
+// cámara). La luz direccional de más abajo se alinea con este mismo valor.
+// No de frente exacto: con el sol justo en el eje de la cámara el cielo se
+// quema y la escena pierde color. Corrido al costado entra luz rasante y
+// las sombras cruzan el cuadro en diagonal.
+const SUN_AZIMUTH = 1.75;
+
 const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
-new RGBELoader().load("/assets/hdri/grasslands_sunset_4k.hdr", (hdrTexture) => {
+new RGBELoader().load("/assets/hdri/belfast_sunset_puresky_4k.hdr", (hdrTexture) => {
   const envMap = pmrem.fromEquirectangular(hdrTexture).texture;
   scene.background = envMap;
   scene.environment = envMap;
+  // Gira el cielo para que el sol poniente quede hacia -Z, es decir de
+  // frente a la cámara y detrás de los marcadores de los personajes: si no,
+  // el atardecer cae fuera de cuadro y la escena se ve gris y plana.
+  scene.backgroundRotation = new THREE.Euler(0, SUN_AZIMUTH, 0);
+  scene.environmentRotation = new THREE.Euler(0, SUN_AZIMUTH, 0);
   hdrTexture.dispose();
   pmrem.dispose();
 });
 
-const sun = new THREE.DirectionalLight(0xffd9a0, 1.8);
-sun.position.set(-6, 4, -2); // ángulo bajo, de atardecer
+// La luz direccional tiene que coincidir con el sol del HDRI (SUN_AZIMUTH),
+// o las sombras caen para un lado y el resplandor del cielo para el otro.
+const sun = new THREE.DirectionalLight(0xffd0a0, 2.1);
+sun.position.set(-6.5, 2.6, -3.5); // bajo y al costado: luz rasante de atardecer
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -10;
@@ -84,6 +106,22 @@ const groundMat = new THREE.MeshStandardMaterial({
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.receiveShadow = true;
 scene.add(ground);
+
+// Llanura lejana: el suelo con PBR 4K y displacement real solo mide 30x30m,
+// suficiente para lo que se pisa, pero con un HDRI de cielo puro se vería
+// el borde recortado contra el vacío. Este plano grande extiende la pampa
+// hasta el horizonte. Va sin displacement ni normal map (a esa distancia no
+// aportan nada y costarían caro) y apenas por debajo, para no pelearse en
+// z-buffer con el suelo detallado.
+const farGroundDiff = loadTiled("/assets/textures/grass_ground/diff_4k.jpg", THREE.SRGBColorSpace);
+farGroundDiff.repeat.set(60, 60);
+const farGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(400, 400),
+  new THREE.MeshStandardMaterial({ map: farGroundDiff, roughness: 1.0, metalness: 0.0 })
+);
+farGround.rotation.x = -Math.PI / 2;
+farGround.position.y = -0.015;
+scene.add(farGround);
 
 // --- Cuerpo de agua: laguna --------------------------------------------
 // Pequeña laguna, coherente con los puntos de agua reales junto a los que
@@ -282,14 +320,17 @@ const dummy = new THREE.Object3D();
 const TREE_COUNT = 55;
 const treePositions = scatterPositions(TREE_COUNT, 4.5, 17, 1.4);
 
-const trunkGeo = new THREE.CylinderGeometry(0.05, 0.11, 1.6, 6);
+const trunkGeo = new THREE.CylinderGeometry(0.05, 0.11, 1.6, 10);
 trunkGeo.translate(0, 0.8, 0);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3b2a, roughness: 0.9, flatShading: true });
 const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
 trunks.castShadow = true;
 
-const canopyGeo = new THREE.IcosahedronGeometry(0.55, 1);
-const canopyMat = new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true });
+// Copa densa (1280 caras) y deformada con ruido: con el icosaedro de 80
+// caras que había antes las copas se leían como poliedros facetados, no
+// como follaje. Son InstancedMesh, así que sigue siendo un solo draw call.
+const canopyGeo = makeOrganicGeometry(new THREE.IcosahedronGeometry(0.55, 3), 0.22, 77);
+const canopyMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
 const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
 canopies.castShadow = true;
 canopies.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // se recompone cada frame (balanceo por viento)
@@ -1255,6 +1296,55 @@ butiaPositions.forEach(([x, z], p) => {
 });
 butiaLeaflets.instanceMatrix.needsUpdate = true;
 scene.add(butiaLeaflets);
+
+// --- Monte lejano: cierra el horizonte ------------------------------------
+// Con el HDRI de cielo puro el horizonte queda vacío, así que la línea de
+// árboles la ponemos nosotros — y así es vegetación nativa, no los galpones
+// y alambrados que traía el HDRI anterior.
+// Se arma en tres capas a distinta distancia, cada una más fría y clara que
+// la anterior: es perspectiva atmosférica, y es lo que da sensación de
+// profundidad real en un paisaje abierto. Son low-poly a propósito: a más
+// de 25m no se distingue el detalle y gastar polígonos ahí sería tirarlos.
+const FAR_BANDS = [
+  { rMin: 26, rMax: 42, count: 130, color: 0x4c6340, hMin: 2.6, hMax: 5.0 },
+  { rMin: 42, rMax: 62, count: 150, color: 0x5d7358, hMin: 3.0, hMax: 5.8 },
+  { rMin: 62, rMax: 88, count: 160, color: 0x74878a, hMin: 3.4, hMax: 6.6 },
+];
+
+const farTrunkGeo = new THREE.CylinderGeometry(0.1, 0.16, 1, 5);
+farTrunkGeo.translate(0, 0.5, 0);
+const farCanopyGeo = new THREE.IcosahedronGeometry(1, 0); // 20 caras: alcanza y sobra a esa distancia
+
+for (const band of FAR_BANDS) {
+  const trunkMatFar = new THREE.MeshStandardMaterial({ color: 0x584734, roughness: 1.0, flatShading: true });
+  const canopyMatFar = new THREE.MeshStandardMaterial({ color: band.color, roughness: 1.0, flatShading: true });
+  const farTrunks = new THREE.InstancedMesh(farTrunkGeo, trunkMatFar, band.count);
+  const farCanopies = new THREE.InstancedMesh(farCanopyGeo, canopyMatFar, band.count);
+
+  for (let i = 0; i < band.count; i++) {
+    const a = rng() * Math.PI * 2;
+    const r = band.rMin + rng() * (band.rMax - band.rMin);
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    const h = band.hMin + rng() * (band.hMax - band.hMin);
+
+    dummy.position.set(x, 0, z);
+    dummy.rotation.set(0, rng() * Math.PI * 2, 0);
+    dummy.scale.set(1, h * 0.55, 1);
+    dummy.updateMatrix();
+    farTrunks.setMatrixAt(i, dummy.matrix);
+
+    const spread = h * (0.42 + rng() * 0.22);
+    dummy.position.set(x, h * 0.62, z);
+    dummy.rotation.set(rng() * 0.4, rng() * Math.PI * 2, rng() * 0.4);
+    dummy.scale.set(spread, spread * (0.6 + rng() * 0.3), spread);
+    dummy.updateMatrix();
+    farCanopies.setMatrixAt(i, dummy.matrix);
+  }
+  farTrunks.instanceMatrix.needsUpdate = true;
+  farCanopies.instanceMatrix.needsUpdate = true;
+  scene.add(farTrunks, farCanopies);
+}
 
 // --- Fauna nativa: carpinchos junto a la laguna + bandada de aves --------
 // Sin locomoción por pedido explícito: la fauna es lo que se mueve/anima
