@@ -995,6 +995,267 @@ ombuPositions.forEach(([x, z], i) => {
   scene.add(crownCore);
 });
 
+// --- Ceibo (Erythrina crista-galli) --------------------------------------
+// FLOR NACIONAL de Uruguay. Árbol de bañados y orillas, así que va en la
+// ribera de la laguna, que es su hábitat real. Rasgos que lo identifican:
+// tronco tortuoso e irregular (nunca recto), copa abierta y poco densa, y
+// sobre todo los racimos de flores rojo carmesí intenso, que en el árbol
+// real se ven antes que el follaje.
+const CEIBO_COUNT = 3;
+const ceiboTrunkMat = new THREE.MeshStandardMaterial({ color: 0x584636, roughness: 0.95, flatShading: true });
+const ceiboLeafMat = new THREE.MeshStandardMaterial({ color: 0x47663a, roughness: 0.9, flatShading: true });
+const ceiboFlowerMat = new THREE.MeshStandardMaterial({
+  color: 0xc4142c,
+  roughness: 0.55,
+  emissive: 0x7a0d1b,
+  emissiveIntensity: 0.3, // levanta el rojo bajo la luz rasante del atardecer
+  flatShading: true,
+});
+
+// Flor: pétalo alargado y curvo, el "pico" de la cresta de gallo que le da
+// el nombre a la especie.
+const ceiboFlowerGeo = new THREE.ConeGeometry(0.042, 0.2, 5);
+ceiboFlowerGeo.rotateX(Math.PI); // punta hacia abajo: la flor cuelga y se afina
+ceiboFlowerGeo.translate(0, -0.1, 0); // pivote en la base, donde se une al racimo
+const CEIBO_FLOWERS = 72;
+const ceiboFlowers = new THREE.InstancedMesh(ceiboFlowerGeo, ceiboFlowerMat, CEIBO_COUNT * CEIBO_FLOWERS);
+ceiboFlowers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+ceiboFlowers.castShadow = true;
+
+const ceiboFlowerSway = [];
+let ceiboFlowerIdx = 0;
+
+for (let c = 0; c < CEIBO_COUNT; c++) {
+  const angle = (c / CEIBO_COUNT) * Math.PI * 2 + 2.2 + rng() * 0.6;
+  const [bx, bz] = waterOutlinePoint(angle, 1.7 + rng() * 0.35);
+  const scale = 0.9 + rng() * 0.3;
+
+  // tronco tortuoso: tramos encadenados que cambian de dirección, en vez
+  // de un cilindro recto
+  let segX = bx;
+  let segZ = bz;
+  let segY = 0.05;
+  let tiltX = (rng() - 0.5) * 0.3;
+  let tiltZ = (rng() - 0.5) * 0.3;
+  const segments = 3;
+  for (let s = 0; s < segments; s++) {
+    const segLen = (0.85 + rng() * 0.5) * scale;
+    const rTop = (0.13 - s * 0.028) * scale;
+    const rBot = (0.19 - s * 0.028) * scale;
+    const segGeo = new THREE.CylinderGeometry(rTop, rBot, segLen, 7);
+    segGeo.translate(0, segLen / 2, 0);
+    const seg = new THREE.Mesh(segGeo, ceiboTrunkMat);
+    seg.position.set(segX, segY, segZ);
+    seg.rotation.x = tiltX;
+    seg.rotation.z = tiltZ;
+    seg.castShadow = true;
+    scene.add(seg);
+
+    // la punta de este tramo es la base del siguiente
+    segX += -Math.sin(tiltZ) * segLen;
+    segZ += Math.sin(tiltX) * segLen;
+    segY += segLen * Math.cos(tiltX) * Math.cos(tiltZ);
+    tiltX += (rng() - 0.5) * 0.5;
+    tiltZ += (rng() - 0.5) * 0.5;
+  }
+
+  // copa abierta: lóbulos separados, no una masa compacta
+  const crownLobes = 5;
+  for (let l = 0; l < crownLobes; l++) {
+    const a = (l / crownLobes) * Math.PI * 2 + rng() * 0.5;
+    const rad = (0.5 + rng() * 0.55) * scale;
+    const lobe = new THREE.Mesh(
+      makeOrganicGeometry(new THREE.IcosahedronGeometry(0.5, 2), 0.35, 500 + c * 10 + l),
+      ceiboLeafMat
+    );
+    lobe.position.set(segX + Math.cos(a) * rad, segY + (rng() - 0.3) * 0.5 * scale, segZ + Math.sin(a) * rad);
+    const ls = (0.85 + rng() * 0.5) * scale;
+    lobe.scale.set(ls, ls * 0.75, ls);
+    lobe.castShadow = true;
+    scene.add(lobe);
+  }
+
+  // racimos de flores colgando del borde de la copa
+  for (let f = 0; f < CEIBO_FLOWERS; f++) {
+    const a = rng() * Math.PI * 2;
+    const rad = (0.35 + rng() * 0.75) * scale;
+    const x = segX + Math.cos(a) * rad;
+    const z = segZ + Math.sin(a) * rad;
+    const y = segY + (rng() - 0.25) * 0.65 * scale;
+    const baseRotX = (rng() - 0.5) * 0.5;
+    const baseRotZ = (rng() - 0.5) * 0.5;
+    const rotY = rng() * Math.PI * 2;
+    const fs = (0.8 + rng() * 0.5) * scale;
+    dummy.position.set(x, y, z);
+    dummy.rotation.set(baseRotX, rotY, baseRotZ);
+    dummy.scale.set(fs, fs, fs);
+    dummy.updateMatrix();
+    ceiboFlowers.setMatrixAt(ceiboFlowerIdx, dummy.matrix);
+    ceiboFlowerSway.push({ index: ceiboFlowerIdx, x, y, z, fs, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
+    ceiboFlowerIdx++;
+  }
+}
+ceiboFlowers.instanceMatrix.needsUpdate = true;
+scene.add(ceiboFlowers);
+
+// --- Palma butiá (Butia odorata) -----------------------------------------
+// La palmera nativa uruguaya. OJO con el nombre: la especie de acá es
+// Butia odorata; "Butia capitata" (como aparece rotulada en varios bancos
+// de modelos) es en realidad la especie brasileña. Rasgo inconfundible: la
+// fronda pinnada se arquea fuerte hacia abajo, dando la silueta de fuente
+// o plumero, y el tronco queda anillado por las bases de hojas viejas.
+const BUTIA_COUNT = 4;
+const FRONDS_PER_PALM = 13;
+// +1 por paso: además de los folíolos laterales va un segmento alineado al
+// raquis, que los cose en una fronda continua en vez de hojas sueltas
+const LEAFLET_STEPS = 22;
+const LEAFLETS_PER_FROND = LEAFLET_STEPS * 2;
+
+const butiaTrunkMat = new THREE.MeshStandardMaterial({ color: 0x6b5a44, roughness: 1.0, flatShading: true });
+const butiaLeafletMat = new THREE.MeshStandardMaterial({
+  color: 0x6f8557,
+  roughness: 0.9,
+  side: THREE.DoubleSide,
+  flatShading: true,
+});
+const butiaFruitMat = new THREE.MeshStandardMaterial({ color: 0xe0921f, roughness: 0.65, flatShading: true });
+
+const leafletGeo = new THREE.ConeGeometry(0.055, 0.5, 3);
+leafletGeo.translate(0, 0.25, 0); // nace en el origen y se extiende hacia +Y
+const butiaLeaflets = new THREE.InstancedMesh(
+  leafletGeo,
+  butiaLeafletMat,
+  BUTIA_COUNT * FRONDS_PER_PALM * LEAFLETS_PER_FROND
+);
+butiaLeaflets.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+butiaLeaflets.castShadow = true;
+
+const frondSway = [];
+let leafletIdx = 0;
+const LEAFLET_UP = new THREE.Vector3(0, 1, 0);
+const leafletDir = new THREE.Vector3();
+const rachisHere = new THREE.Vector3();
+const rachisNext = new THREE.Vector3();
+const rachisDir = new THREE.Vector3();
+const swayQuat = new THREE.Quaternion();
+const swayAxis = new THREE.Vector3();
+const composedQuat = new THREE.Quaternion();
+
+const butiaPositions = scatterPositions(BUTIA_COUNT, 7, 14, 2.2);
+butiaPositions.forEach(([x, z], p) => {
+  const scale = 0.9 + rng() * 0.4;
+  const trunkH = (3.2 + rng() * 1.4) * scale;
+
+  const butiaTrunkGeo = new THREE.CylinderGeometry(0.19 * scale, 0.26 * scale, trunkH, 9);
+  butiaTrunkGeo.translate(0, trunkH / 2, 0);
+  const butiaTrunk = new THREE.Mesh(butiaTrunkGeo, butiaTrunkMat);
+  butiaTrunk.position.set(x, 0.05, z);
+  butiaTrunk.castShadow = true;
+  scene.add(butiaTrunk);
+
+  // anillos: las bases de hojas viejas que quedan pegadas al tronco
+  const rings = Math.floor(trunkH / 0.32);
+  for (let r = 0; r < rings; r++) {
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.23 * scale, 0.23 * scale, 0.1, 9), butiaTrunkMat);
+    ring.position.set(x, 0.05 + 0.2 + r * 0.32, z);
+    ring.scale.set(1, 1, 1);
+    scene.add(ring);
+  }
+
+  const crownY = 0.05 + trunkH;
+
+  for (let f = 0; f < FRONDS_PER_PALM; f++) {
+    const frondAngle = (f / FRONDS_PER_PALM) * Math.PI * 2 + rng() * 0.25;
+    const frondLen = (1.5 + rng() * 0.6) * scale;
+    // ángulo inicial de salida: las de afuera salen casi horizontales, las
+    // del centro más erguidas
+    const rise = 0.45 + rng() * 0.75;
+    const phase = rng() * Math.PI * 2;
+
+    // Direcciones del raquis: hacia afuera y lateral. Los folíolos se
+    // orientan con quaternion (apuntando el eje +Y de la geometría a una
+    // dirección calculada) en vez de con ángulos de Euler: con Euler es
+    // casi imposible lograr que la punta de la fronda cuelgue hacia abajo
+    // y queda todo apuntando al cielo como una yuca.
+    const radialX = Math.cos(frondAngle);
+    const radialZ = Math.sin(frondAngle);
+    const latX = -Math.sin(frondAngle);
+    const latZ = Math.cos(frondAngle);
+
+    // punto del raquis en la posición normalizada tt (0 = base, 1 = punta).
+    // El arco sube al principio y cae al final: de acá sale la silueta de
+    // fuente característica del butiá.
+    const rachisPoint = (tt, out) => {
+      const arcY = Math.sin(tt * Math.PI * 0.85) * rise - tt * tt * 1.35;
+      const dist = tt * frondLen;
+      return out.set(x + radialX * dist, crownY + arcY * scale, z + radialZ * dist);
+    };
+
+    for (let s = 0; s < LEAFLET_STEPS; s++) {
+      const tt = (s + 1) / LEAFLET_STEPS;
+      rachisPoint(tt, rachisHere);
+      const lx = rachisHere.x;
+      const ly = rachisHere.y;
+      const lz = rachisHere.z;
+
+      // folíolos laterales: salen en "V" y caen cada vez más hacia la punta
+      const side = s % 2 === 0 ? 1 : -1;
+      const upComp = 0.5 - tt * 1.5; // positivo en la base, negativo en la punta
+      const ls = (1 - tt * 0.4) * scale;
+      leafletDir
+        .set(radialX * 0.72 + latX * side * 0.55, upComp, radialZ * 0.72 + latZ * side * 0.55)
+        .normalize();
+      const sideQuat = new THREE.Quaternion().setFromUnitVectors(LEAFLET_UP, leafletDir);
+
+      dummy.position.set(lx, ly, lz);
+      dummy.quaternion.copy(sideQuat);
+      dummy.scale.set(ls, ls, ls);
+      dummy.updateMatrix();
+      butiaLeaflets.setMatrixAt(leafletIdx, dummy.matrix);
+      frondSway.push({ index: leafletIdx, x: lx, y: ly, z: lz, ls, baseQuat: sideQuat, tt, phase });
+      leafletIdx++;
+
+      // segmento del raquis: apunta al siguiente punto del arco, de modo
+      // que la fronda se lee como una hoja entera y no como folíolos sueltos
+      rachisPoint(Math.min(1, tt + 1 / LEAFLET_STEPS), rachisNext);
+      rachisDir.subVectors(rachisNext, rachisHere).normalize();
+      const rachisQuat = new THREE.Quaternion().setFromUnitVectors(LEAFLET_UP, rachisDir);
+      const rs = (0.42 - tt * 0.1) * scale;
+
+      dummy.position.set(lx, ly, lz);
+      dummy.quaternion.copy(rachisQuat);
+      dummy.scale.set(rs * 0.6, rs * 1.5, rs * 0.6);
+      dummy.updateMatrix();
+      butiaLeaflets.setMatrixAt(leafletIdx, dummy.matrix);
+      frondSway.push({
+        index: leafletIdx,
+        x: lx,
+        y: ly,
+        z: lz,
+        ls: rs,
+        scaleX: rs * 0.6,
+        scaleY: rs * 1.5,
+        baseQuat: rachisQuat,
+        tt,
+        phase,
+      });
+      leafletIdx++;
+    }
+  }
+
+  // racimo de frutos: el butiá que le da nombre al árbol y a los palmares
+  const bunch = new THREE.Group();
+  for (let b = 0; b < 16; b++) {
+    const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.045 * scale, 6, 5), butiaFruitMat);
+    fruit.position.set((rng() - 0.5) * 0.28, -rng() * 0.32, (rng() - 0.5) * 0.28);
+    bunch.add(fruit);
+  }
+  bunch.position.set(x + 0.2 * scale, crownY - 0.15, z);
+  scene.add(bunch);
+});
+butiaLeaflets.instanceMatrix.needsUpdate = true;
+scene.add(butiaLeaflets);
+
 // --- Fauna nativa: carpinchos junto a la laguna + bandada de aves --------
 // Sin locomoción por pedido explícito: la fauna es lo que se mueve/anima
 // en la escena, no la cámara. Geometría procedimental (mismo criterio que
@@ -1851,6 +2112,37 @@ renderer.setAnimationLoop((time) => {
   }
   pampasStalks.instanceMatrix.needsUpdate = true;
   pampasPlumes.instanceMatrix.needsUpdate = true;
+
+  // Flores del ceibo: cuelgan, así que oscilan como péndulos cortos.
+  for (const cf of ceiboFlowerSway) {
+    const sway = Math.sin(t * 1.2 + cf.phase) * 0.13 + Math.sin(t * 2.3 + cf.phase * 1.5) * 0.05;
+    dummy.position.set(cf.x, cf.y, cf.z);
+    dummy.rotation.set(cf.baseRotX + sway, cf.rotY, cf.baseRotZ + sway * 0.7);
+    dummy.scale.set(cf.fs, cf.fs, cf.fs);
+    dummy.updateMatrix();
+    ceiboFlowers.setMatrixAt(cf.index, dummy.matrix);
+  }
+  ceiboFlowers.instanceMatrix.needsUpdate = true;
+
+  // Frondas del butiá: la punta de la hoja se mueve mucho más que la base,
+  // por eso la amplitud escala con la posición a lo largo del raquis (tt).
+  for (const fr of frondSway) {
+    const amp = 0.05 + fr.tt * 0.16;
+    const sway = Math.sin(t * 0.9 + fr.phase) * amp + Math.sin(t * 1.8 + fr.phase * 1.4) * amp * 0.35;
+    // el balanceo se compone sobre la orientación base en vez de
+    // reemplazarla, para no perder la caída de la fronda
+    swayAxis.set(Math.cos(fr.phase), 0.25, Math.sin(fr.phase)).normalize();
+    swayQuat.setFromAxisAngle(swayAxis, sway);
+    composedQuat.multiplyQuaternions(swayQuat, fr.baseQuat);
+    dummy.position.set(fr.x, fr.y, fr.z);
+    dummy.quaternion.copy(composedQuat);
+    // los segmentos de raquis llevan escala no uniforme (finos y largos)
+    if (fr.scaleX !== undefined) dummy.scale.set(fr.scaleX, fr.scaleY, fr.scaleX);
+    else dummy.scale.set(fr.ls, fr.ls, fr.ls);
+    dummy.updateMatrix();
+    butiaLeaflets.setMatrixAt(fr.index, dummy.matrix);
+  }
+  butiaLeaflets.instanceMatrix.needsUpdate = true;
 
   for (let i = 0; i < treeCanopySway.length; i++) {
     const c = treeCanopySway[i];
