@@ -15,10 +15,20 @@ Proyecto con dos partes:
 ```bash
 cd viewer
 npm install
+./scripts/download-assets.sh   # baja el HDRI 4K + set PBR 4K (~50MB, no están en git)
 npm run dev
 ```
 
 Abre la URL local en Chrome/Edge. Con el emulador de WebXR instalado verás el botón "Enter VR"; en un Quest conectado por cable/wifi a la misma red, ábrelo en el navegador del headset.
+
+### Assets 4K (entorno ultra detallado)
+
+El suelo y la iluminación usan assets reales CC0 de [Poly Haven](https://polyhaven.com), descargados por `scripts/download-assets.sh` (no se commitean al repo por su peso):
+
+- **HDRI** [royal_esplanade](https://polyhaven.com/a/royal_esplanade) (4K) — iluminación por imagen (IBL) + fondo/reflejos
+- **Textura PBR** [cobblestone_floor_04](https://polyhaven.com/a/cobblestone_floor_04) (4K: difuso, normal, ARM, desplazamiento) — suelo con relieve geométrico real, no solo normal mapping
+
+Para cambiar el entorno, edita las URLs en `scripts/download-assets.sh` por cualquier otro asset CC0 de Poly Haven (buscar el `slug` en polyhaven.com y usar la misma estructura de URL).
 
 ## Video (Remotion)
 
