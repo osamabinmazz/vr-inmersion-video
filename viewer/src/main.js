@@ -15,8 +15,6 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.getElementById("app").appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
-// Fix de nitidez en VR (ver skill webxr-dev): el framebuffer por defecto
-// suele renderizar por debajo de la resolución nativa del headset.
 renderer.xr.addEventListener("sessionstart", () => {
   renderer.xr.setFramebufferScaleFactor(2.0);
 });
@@ -25,13 +23,13 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // --- Scene ------------------------------------------------------------
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0b1530, 0.015);
+scene.fog = new THREE.FogExp2(0x1a1a0f, 0.008);
 
-// --- HDRI: iluminación por imagen (IBL) + fondo -----------------------
-// royal_esplanade_4k.hdr — CC0, Poly Haven (polyhaven.com/a/royal_esplanade)
+// --- HDRI: pradera charrúa al atardecer (IBL) + fondo ----------------------
+// grasslands_sunset_4k.hdr — CC0, Poly Haven (polyhaven.com/a/grasslands_sunset)
 const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
-new RGBELoader().load("/assets/hdri/royal_esplanade_4k.hdr", (hdrTexture) => {
+new RGBELoader().load("/assets/hdri/grasslands_sunset_4k.hdr", (hdrTexture) => {
   const envMap = pmrem.fromEquirectangular(hdrTexture).texture;
   scene.background = envMap;
   scene.environment = envMap;
@@ -39,20 +37,20 @@ new RGBELoader().load("/assets/hdri/royal_esplanade_4k.hdr", (hdrTexture) => {
   pmrem.dispose();
 });
 
-const directional = new THREE.DirectionalLight(0xffffff, 1.5);
-directional.position.set(4, 6, 3);
-directional.castShadow = true;
-directional.shadow.mapSize.set(2048, 2048);
-directional.shadow.camera.left = -8;
-directional.shadow.camera.right = 8;
-directional.shadow.camera.top = 8;
-directional.shadow.camera.bottom = -8;
-scene.add(directional);
+const sun = new THREE.DirectionalLight(0xffd9a0, 1.8);
+sun.position.set(-6, 4, -2); // ángulo bajo, de atardecer
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -10;
+sun.shadow.camera.right = 10;
+sun.shadow.camera.top = 10;
+sun.shadow.camera.bottom = -10;
+scene.add(sun);
 
-// --- Suelo PBR 4K con desplazamiento geométrico real ----------------------
-// cobblestone_floor_04 — CC0, Poly Haven (polyhaven.com/a/cobblestone_floor_04)
+// --- Suelo PBR 4K: pradera nativa con relieve real -------------------------
+// grass_ground — CC0, Poly Haven (polyhaven.com/a/grass_ground)
 const texLoader = new THREE.TextureLoader();
-const REPEAT = 4;
+const REPEAT = 6;
 
 function loadTiled(path, colorSpace) {
   const t = texLoader.load(path);
@@ -63,17 +61,14 @@ function loadTiled(path, colorSpace) {
   return t;
 }
 
-const groundDiff = loadTiled("/assets/textures/cobblestone_floor_04/diff_4k.jpg", THREE.SRGBColorSpace);
-const groundNormal = loadTiled("/assets/textures/cobblestone_floor_04/nor_gl_4k.jpg");
-// ARM: R=AO, G=Roughness, B=Metalness (empaquetado estilo glTF)
-const groundArm = loadTiled("/assets/textures/cobblestone_floor_04/arm_4k.jpg");
-const groundDisp = loadTiled("/assets/textures/cobblestone_floor_04/disp_4k.jpg");
+const groundDiff = loadTiled("/assets/textures/grass_ground/diff_4k.jpg", THREE.SRGBColorSpace);
+const groundNormal = loadTiled("/assets/textures/grass_ground/nor_gl_4k.jpg");
+const groundArm = loadTiled("/assets/textures/grass_ground/arm_4k.jpg"); // R=AO G=Rough B=Metal
+const groundDisp = loadTiled("/assets/textures/grass_ground/disp_4k.jpg");
 
-// Suficientes segmentos para que el displacement genere relieve real, sin
-// reventar el framerate en VR (72-120fps) — ver skill webxr-dev.
-const groundGeo = new THREE.PlaneGeometry(20, 20, 128, 128);
+const groundGeo = new THREE.PlaneGeometry(30, 30, 160, 160);
 groundGeo.rotateX(-Math.PI / 2);
-groundGeo.setAttribute("uv2", groundGeo.attributes.uv); // requerido por aoMap
+groundGeo.setAttribute("uv2", groundGeo.attributes.uv);
 
 const groundMat = new THREE.MeshStandardMaterial({
   map: groundDiff,
@@ -81,10 +76,9 @@ const groundMat = new THREE.MeshStandardMaterial({
   roughnessMap: groundArm,
   metalnessMap: groundArm,
   aoMap: groundArm,
-  aoMapIntensity: 1.0,
   displacementMap: groundDisp,
-  displacementScale: 0.08,
-  metalness: 0.0, // el metalness real lo aporta el canal B del ARM map
+  displacementScale: 0.15,
+  metalness: 0.0,
 });
 
 const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -92,7 +86,6 @@ ground.receiveShadow = true;
 scene.add(ground);
 
 // --- Camera rig -------------------------------------------------------
-// Todo lo movible vive bajo este grupo (ver skill webxr-dev).
 const cameraRig = new THREE.Group();
 scene.add(cameraRig);
 
@@ -102,22 +95,53 @@ const camera = new THREE.PerspectiveCamera(
   0.05,
   100
 );
-camera.position.set(0, 1.6, 3);
+camera.position.set(0, 1.6, 4);
 cameraRig.add(camera);
 
-// --- Objeto foco: material físico reflectante para lucir el HDRI ----------
-const focal = new THREE.Mesh(
-  new THREE.IcosahedronGeometry(0.5, 4),
-  new THREE.MeshPhysicalMaterial({
-    color: 0x22d3ee,
-    roughness: 0.15,
-    metalness: 0.9,
-    clearcoat: 0.5,
-  })
-);
-focal.position.set(0, 1.6, -2);
-focal.castShadow = true;
-scene.add(focal);
+// --- Marcadores de puntos de interés (placeholders) -------------------
+// Figuras humanas (Vaimaca Perú, Abayubá, Guyunusa) pospuestas — ver README.
+// Estos marcadores señalan dónde irán, con un panel de texto flotante.
+function makeLabelSprite(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(15,15,10,0.75)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f5e6c8";
+  ctx.font = "bold 48px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(1.6, 0.4, 1);
+  return sprite;
+}
+
+const POI = [
+  { name: "Vaimacá Perú", pos: [-2.5, 0, -3] },
+  { name: "Abayubá", pos: [0, 0, -4.5] },
+  { name: "Guyunusa", pos: [2.5, 0, -3] },
+];
+
+const poiMarkers = [];
+for (const { name, pos } of POI) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.35, 0.45, 32),
+    new THREE.MeshBasicMaterial({ color: 0xf5e6c8, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(pos[0], 0.02, pos[2]);
+  scene.add(ring);
+
+  const label = makeLabelSprite(name);
+  label.position.set(pos[0], 1.9, pos[2]);
+  scene.add(label);
+
+  poiMarkers.push(ring);
+}
 
 // --- Resize -----------------------------------------------------------
 window.addEventListener("resize", () => {
@@ -127,13 +151,15 @@ window.addEventListener("resize", () => {
 });
 
 // --- Loop -----------------------------------------------------------------
-renderer.setAnimationLoop(() => {
-  focal.rotation.y += 0.005;
+renderer.setAnimationLoop((time) => {
+  for (const ring of poiMarkers) {
+    ring.material.opacity = 0.5 + 0.3 * Math.sin(time * 0.002 + ring.position.x);
+  }
   renderer.render(scene, camera);
 });
 
-// TODO (ver skill webxr-dev):
+// TODO (ver README y skill webxr-dev):
+// - Reemplazar los marcadores por figuras 3D animadas (Vaimacá Perú, Abayubá,
+//   Guyunusa) cuando se decida el enfoque — ver sección "Personajes" del README.
 // - Controllers + locomoción (thumbstick) y teleport
-// - Reemplazar el objeto foco por modelos reales (Blender MCP)
-// - Si el hardware VR es limitado, bajar REPEAT/segments del suelo o el
-//   framebufferScaleFactor de sesión
+// - Vegetación adicional (pastos altos, árboles nativos: ceibo, espinillo)

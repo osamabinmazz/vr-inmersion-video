@@ -25,10 +25,26 @@ Abre la URL local en Chrome/Edge. Con el emulador de WebXR instalado verás el b
 
 El suelo y la iluminación usan assets reales CC0 de [Poly Haven](https://polyhaven.com), descargados por `scripts/download-assets.sh` (no se commitean al repo por su peso):
 
-- **HDRI** [royal_esplanade](https://polyhaven.com/a/royal_esplanade) (4K) — iluminación por imagen (IBL) + fondo/reflejos
-- **Textura PBR** [cobblestone_floor_04](https://polyhaven.com/a/cobblestone_floor_04) (4K: difuso, normal, ARM, desplazamiento) — suelo con relieve geométrico real, no solo normal mapping
+- **HDRI** [grasslands_sunset](https://polyhaven.com/a/grasslands_sunset) (4K) — pradera al atardecer, iluminación por imagen (IBL) + fondo/reflejos
+- **Textura PBR** [grass_ground](https://polyhaven.com/a/grass_ground) (4K: difuso, normal, ARM, desplazamiento) — suelo con relieve geométrico real, no solo normal mapping
 
 Para cambiar el entorno, edita las URLs en `scripts/download-assets.sh` por cualquier otro asset CC0 de Poly Haven (buscar el `slug` en polyhaven.com y usar la misma estructura de URL).
+
+### Contexto: jornada territorial Zapicán
+
+Este viewer es el componente digital complementario de una actividad territorial real en el entorno de la estatua de **Zapicán** (Punta de Rieles), con las escuelas N.º 179 y N.º 338 — ver el plan completo de la jornada: [Jornada Territorial — Estatua de Zapicán](https://claude.ai/artifact/Vw3QTJ81LjVXLRrpb2TDpL).
+
+### Personajes (pendiente)
+
+La escena tiene 3 marcadores ubicados donde eventualmente irán figuras representando a **Vaimacá Perú**, **Abayubá** y **Guyunusa**, haciendo vida cotidiana de su época. Se decidió posponer su modelado porque:
+
+1. No hay referencias visuales confiables de su aspecto real — cualquier recreación 3D es una **interpretación artística**, no un retrato histórico, y hay que comunicarlo así.
+2. Requiere modelos humanos rigged/animados (no solo texturas), un salto de complejidad distinto al del entorno.
+
+**Opciones evaluadas para cuando se retome:**
+- Modelos base tipo Mixamo personalizados con vestimenta/adornos de la época, animados haciendo actividades simples (tejer, hacer fuego, caminar).
+- Siluetas/recortes 2D ilustrados con panel de texto/audio (ElevenLabs MCP) — más honesto visualmente sobre que es una recreación didáctica.
+- Modelado en Blender (vía Blender MCP) si se consigue asesoramiento de referencia cultural/histórica confiable.
 
 ## Video (Remotion)
 
