@@ -145,6 +145,27 @@ const water = new THREE.Mesh(waterGeo, waterMat);
 water.position.set(WATER_CENTER[0], 0.17, WATER_CENTER[1]); // por encima del displacementScale del suelo (0.15) para que no quede tapada
 scene.add(water);
 
+// Ondas visuales de chapoteo: un anillo que se expande y se desvanece en
+// la superficie, disparado junto con el sonido de chapoteo (playWaterSplash,
+// definido más abajo) para que se vea Y se escuche el mismo evento — sin
+// esto el agua sonaba viva pero se veía perfectamente quieta.
+const splashRingGeo = new THREE.RingGeometry(0.06, 0.11, 20);
+splashRingGeo.rotateX(-Math.PI / 2);
+const activeSplashes = [];
+let currentTime = 0; // actualizado en el render loop; usado para el timing de los splashes
+
+function spawnSplashRing() {
+  const angle = rng() * Math.PI * 2;
+  const r = rng() * WATER_RADIUS * 0.8;
+  const x = WATER_CENTER[0] + Math.cos(angle) * r;
+  const z = WATER_CENTER[1] + Math.sin(angle) * r * WATER_Z_SQUASH;
+  const mat = new THREE.MeshBasicMaterial({ color: 0xdfeff2, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(splashRingGeo, mat);
+  ring.position.set(x, 0.19, z);
+  scene.add(ring);
+  activeSplashes.push({ mesh: ring, start: currentTime, duration: 1400 + rng() * 400 });
+}
+
 // --- Vegetación nativa: árboles y arbustos (espinillo/algarrobo) ----------
 // Generados procedimentalmente (bajo poly, InstancedMesh) en vez de bajar
 // modelos de asset packs: da buen rendimiento en VR y una silueta más fiel
@@ -202,10 +223,17 @@ const canopyGeo = new THREE.IcosahedronGeometry(0.55, 1);
 const canopyMat = new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true });
 const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
 canopies.castShadow = true;
+canopies.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // se recompone cada frame (balanceo por viento)
 
 const espinilloGreen = new THREE.Color(0x7a8f4a);
 const algarroboGreen = new THREE.Color(0x4f6b3a);
 const tmpColor = new THREE.Color();
+
+// Datos por instancia de copa (para el balanceo de viento del render loop):
+// no se puede animar una InstancedMesh por vértice sin shader propio, pero
+// sí recomponer la matriz de cada instancia por frame con una rotación
+// extra oscilante — barato (55 instancias) y da la sensación de viento.
+const treeCanopySway = [];
 
 treePositions.forEach(([x, z], i) => {
   // Escala UNIFORME del tronco (no desacoplar alto/ancho): así se mantiene
@@ -220,15 +248,19 @@ treePositions.forEach(([x, z], i) => {
   dummy.updateMatrix();
   trunks.setMatrixAt(i, dummy.matrix);
 
-  dummy.position.set(x, trunkTopY - 0.08, z);
-  dummy.rotation.set(rng() * 0.25, rng() * Math.PI * 2, rng() * 0.25);
-  dummy.scale.set(
-    treeScale * (1.1 + rng() * 0.6),
-    treeScale * (0.6 + rng() * 0.3), // copa achatada, típica del espinillo
-    treeScale * (1.1 + rng() * 0.6)
-  );
+  const cy = trunkTopY - 0.08;
+  const rotX = rng() * 0.25;
+  const rotY = rng() * Math.PI * 2;
+  const rotZ = rng() * 0.25;
+  const sX = treeScale * (1.1 + rng() * 0.6);
+  const sY = treeScale * (0.6 + rng() * 0.3); // copa achatada, típica del espinillo
+  const sZ = treeScale * (1.1 + rng() * 0.6);
+  dummy.position.set(x, cy, z);
+  dummy.rotation.set(rotX, rotY, rotZ);
+  dummy.scale.set(sX, sY, sZ);
   dummy.updateMatrix();
   canopies.setMatrixAt(i, dummy.matrix);
+  treeCanopySway.push({ x, y: cy, z, rotX, rotY, rotZ, sX, sY, sZ, phase: rng() * Math.PI * 2 });
 
   tmpColor.lerpColors(espinilloGreen, algarroboGreen, rng());
   canopies.setColorAt(i, tmpColor);
@@ -345,6 +377,12 @@ const SHRUB_SPECIES = [
 const flowerGeo = new THREE.IcosahedronGeometry(0.045, 0);
 const FLOWERS_PER_SHRUB = 3;
 
+// Igual que con las copas de los árboles: se guarda la transformación base
+// de cada arbusto para poder recomponerla con un balanceo leve por viento
+// en el render loop (más sutil que el de los árboles, menos que el pasto).
+const shrubSway = [];
+const shrubBodyMeshes = [];
+
 for (const species of SHRUB_SPECIES) {
   const positions = scatterPositions(species.count, 1.8, 9.5, 1.0);
 
@@ -358,6 +396,8 @@ for (const species of SHRUB_SPECIES) {
   const body = new THREE.InstancedMesh(species.geo(), bodyMat, positions.length);
   body.castShadow = true;
   body.receiveShadow = true;
+  body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  shrubBodyMeshes.push(body);
 
   const flowerMat = new THREE.MeshStandardMaterial({
     color: species.flower,
@@ -372,11 +412,16 @@ for (const species of SHRUB_SPECIES) {
   positions.forEach(([x, z], i) => {
     const s = 0.6 + rng() * 0.6;
     const h = s * 0.35;
+    const rotX = rng() * Math.PI;
+    const rotY = rng() * Math.PI;
+    const rotZ = rng() * Math.PI;
+    const sY = s * (0.8 + rng() * 0.4);
     dummy.position.set(x, h, z);
-    dummy.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
-    dummy.scale.set(s, s * (0.8 + rng() * 0.4), s);
+    dummy.rotation.set(rotX, rotY, rotZ);
+    dummy.scale.set(s, sY, s);
     dummy.updateMatrix();
     body.setMatrixAt(i, dummy.matrix);
+    shrubSway.push({ mesh: body, index: i, x, y: h, z, rotX, rotY, rotZ, s, sY, phase: rng() * Math.PI * 2 });
 
     for (let f = 0; f < FLOWERS_PER_SHRUB; f++) {
       const ang = rng() * Math.PI * 2;
@@ -401,11 +446,19 @@ const grassGeo = new THREE.ConeGeometry(0.025, 0.5, 3);
 grassGeo.translate(0, 0.25, 0);
 const grassMat = new THREE.MeshStandardMaterial({ color: 0x9a9a52, roughness: 1.0, flatShading: true });
 const grassTufts = new THREE.InstancedMesh(grassGeo, grassMat, grassPositions.length);
+grassTufts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
+// El pasto es lo que más se nota balanceándose con el viento (más alto,
+// más liviano) — guarda transform base por mechón para el render loop.
+const grassSway = [];
 grassPositions.forEach(([x, z], i) => {
   const s = 0.6 + rng() * 0.8;
+  const baseRotX = (rng() - 0.5) * 0.3;
+  const baseRotZ = (rng() - 0.5) * 0.3;
+  const rotY = rng() * Math.PI * 2;
+  grassSway.push({ x, z, s, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
   dummy.position.set(x, 0, z);
-  dummy.rotation.set((rng() - 0.5) * 0.3, rng() * Math.PI * 2, (rng() - 0.5) * 0.3);
+  dummy.rotation.set(baseRotX, rotY, baseRotZ);
   dummy.scale.set(1, s, 1);
   dummy.updateMatrix();
   grassTufts.setMatrixAt(i, dummy.matrix);
@@ -526,6 +579,58 @@ for (let i = 0; i < BIRD_COUNT; i++) {
   scene.add(bird);
   birds.push(bird);
 }
+
+// Mariposas (tipo Vanessa carye — "isabelita del campo" — especie nativa
+// muy común en la pradera uruguaya), revoloteando cerca de los arbustos con
+// flor: dan movimiento a media altura, distinto del vuelo alto en círculo
+// de las aves, y refuerzan la idea de polinización sobre la vegetación
+// florida ya sembrada.
+const butterflyWingMat = new THREE.MeshStandardMaterial({
+  color: 0xe8963c,
+  roughness: 0.55,
+  side: THREE.DoubleSide,
+  flatShading: true,
+  emissive: 0xe8963c,
+  emissiveIntensity: 0.08,
+});
+const butterflyBodyMat = new THREE.MeshStandardMaterial({ color: 0x2a1f14, roughness: 0.8, flatShading: true });
+
+function makeButterfly() {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.006, 0.03, 3, 4), butterflyBodyMat);
+  body.rotation.z = Math.PI / 2;
+  group.add(body);
+
+  const wingGeo = new THREE.PlaneGeometry(0.06, 0.045);
+  const wingL = new THREE.Mesh(wingGeo, butterflyWingMat);
+  wingL.position.set(0, 0, 0.006);
+  const wingR = new THREE.Mesh(wingGeo, butterflyWingMat);
+  wingR.position.set(0, 0, -0.006);
+  group.add(wingL, wingR);
+  group.userData.wings = [wingL, wingR];
+
+  return group;
+}
+
+const BUTTERFLY_COUNT = 16;
+const butterflyHomes = scatterPositions(BUTTERFLY_COUNT, 1.8, 9.5, 1.0);
+const butterflies = [];
+butterflyHomes.forEach(([hx, hz]) => {
+  const bfly = makeButterfly();
+  Object.assign(bfly.userData, {
+    homeX: hx,
+    homeZ: hz,
+    homeY: 0.35 + rng() * 0.4,
+    radius: 0.25 + rng() * 0.45,
+    speed: 0.5 + rng() * 0.5,
+    phase: rng() * Math.PI * 2,
+    vertPhase: rng() * Math.PI * 2,
+    flapSpeed: 16 + rng() * 8,
+  });
+  scene.add(bfly);
+  butterflies.push(bfly);
+});
 
 // --- Sonido ambiente: viento + cantos de aves + carpincho -----------------
 // Sintetizado con Web Audio API (osciladores + ruido filtrado), sin bajar
@@ -695,13 +800,21 @@ function playWaterSplash(ctx, panner) {
   noise.stop(now + 0.3);
 }
 
-function scheduleWaterSplashes(ctx, panner) {
+// Los chapoteos combinan sonido Y el anillo visual (spawnSplashRing, ver
+// sección del cuerpo de agua) en un único evento — así el agua se ve viva
+// aunque el usuario todavía no haya activado el sonido, y cuando lo activa
+// el chapoteo que escucha es el mismo que ve.
+let waterPanner = null;
+
+function scheduleWaterEvents() {
   const tick = () => {
-    playWaterSplash(ctx, panner);
+    spawnSplashRing();
+    if (audioCtx && waterPanner) playWaterSplash(audioCtx, waterPanner);
     setTimeout(tick, 4000 + Math.random() * 6000);
   };
   setTimeout(tick, 2500);
 }
+scheduleWaterEvents();
 
 const soundToggle = document.getElementById("sound-toggle");
 if (soundToggle) {
@@ -710,9 +823,8 @@ if (soundToggle) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       startWind(audioCtx);
       scheduleWildlifeSounds(audioCtx);
-      const waterPanner = makeWaterPanner(audioCtx);
+      waterPanner = makeWaterPanner(audioCtx);
       startWaterAmbience(audioCtx, waterPanner);
-      scheduleWaterSplashes(audioCtx, waterPanner);
     }
     if (audioCtx.state === "suspended") audioCtx.resume();
     soundToggle.textContent = "🔊 Sonido activado";
@@ -790,11 +902,29 @@ const listenerForward = new THREE.Vector3();
 const listenerUp = new THREE.Vector3();
 
 renderer.setAnimationLoop((time) => {
+  currentTime = time;
+
   for (const ring of poiMarkers) {
     ring.material.opacity = 0.5 + 0.3 * Math.sin(time * 0.002 + ring.position.x);
   }
   waterNormalTex.offset.x = time * 0.00002;
   waterNormalTex.offset.y = time * 0.000012;
+
+  // Anillos de chapoteo: se expanden y desvanecen, se descartan al terminar.
+  for (let i = activeSplashes.length - 1; i >= 0; i--) {
+    const sp = activeSplashes[i];
+    const elapsed = currentTime - sp.start;
+    const p = Math.min(elapsed / sp.duration, 1);
+    if (p >= 1) {
+      scene.remove(sp.mesh);
+      sp.mesh.material.dispose();
+      activeSplashes.splice(i, 1);
+      continue;
+    }
+    const scale = 1 + p * 6;
+    sp.mesh.scale.set(scale, 1, scale);
+    sp.mesh.material.opacity = 0.55 * (1 - p);
+  }
 
   // Listener de audio sigue a la cámara: el paneo espacial del agua
   // reacciona a hacia dónde mira el usuario (clave en VR).
@@ -836,6 +966,55 @@ renderer.setAnimationLoop((time) => {
   for (const capy of capybaras) {
     capy.position.y = 0.01 + 0.01 * Math.sin(t * 0.8 + capy.userData.bobOffset);
   }
+
+  for (const bfly of butterflies) {
+    const { homeX, homeZ, homeY, radius, speed, phase, vertPhase, flapSpeed } = bfly.userData;
+    const angle = t * speed + phase;
+    bfly.position.set(
+      homeX + Math.cos(angle) * radius,
+      homeY + Math.sin(t * 1.4 + vertPhase) * 0.12,
+      homeZ + Math.sin(angle * 1.6) * radius
+    );
+    bfly.rotation.y = -angle + Math.PI / 2;
+    const flap = Math.sin(t * flapSpeed + phase) * 1.1;
+    for (const wing of bfly.userData.wings) wing.rotation.x = flap;
+  }
+
+  // Balanceo por viento: pasto (más marcado), arbustos (sutil) y copas de
+  // los árboles (más lento y leve) — recompone la matriz de cada instancia
+  // sumando una oscilación a su rotación base. Barato: ~565 instancias en
+  // total, nada comparado con el trabajo de sombreado/raster por frame.
+  for (let i = 0; i < grassSway.length; i++) {
+    const g = grassSway[i];
+    const sway = Math.sin(t * 1.1 + g.phase) * 0.14 + Math.sin(t * 2.6 + g.phase * 1.7) * 0.05;
+    dummy.position.set(g.x, 0, g.z);
+    dummy.rotation.set(g.baseRotX + sway, g.rotY, g.baseRotZ + sway * 0.6);
+    dummy.scale.set(1, g.s, 1);
+    dummy.updateMatrix();
+    grassTufts.setMatrixAt(i, dummy.matrix);
+  }
+  grassTufts.instanceMatrix.needsUpdate = true;
+
+  for (const b of shrubSway) {
+    const sway = Math.sin(t * 0.7 + b.phase) * 0.05 + Math.sin(t * 1.6 + b.phase * 1.3) * 0.02;
+    dummy.position.set(b.x, b.y, b.z);
+    dummy.rotation.set(b.rotX + sway, b.rotY, b.rotZ + sway * 0.7);
+    dummy.scale.set(b.s, b.sY, b.s);
+    dummy.updateMatrix();
+    b.mesh.setMatrixAt(b.index, dummy.matrix);
+  }
+  for (const mesh of shrubBodyMeshes) mesh.instanceMatrix.needsUpdate = true;
+
+  for (let i = 0; i < treeCanopySway.length; i++) {
+    const c = treeCanopySway[i];
+    const sway = Math.sin(t * 0.5 + c.phase) * 0.035 + Math.sin(t * 1.2 + c.phase * 1.4) * 0.015;
+    dummy.position.set(c.x, c.y, c.z);
+    dummy.rotation.set(c.rotX + sway, c.rotY, c.rotZ + sway * 0.8);
+    dummy.scale.set(c.sX, c.sY, c.sZ);
+    dummy.updateMatrix();
+    canopies.setMatrixAt(i, dummy.matrix);
+  }
+  canopies.instanceMatrix.needsUpdate = true;
 
   renderer.render(scene, camera);
 });

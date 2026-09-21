@@ -42,8 +42,11 @@ La escena incluye fauna procedimental (mismo criterio que la vegetación — sin
 - **Bandada de aves** (10) volando en círculos bajos cerca de los árboles, con aleteo animado.
 - **Sonido ambiente** sintetizado con Web Audio API (viento + cantos de aves + gruñido ocasional de carpincho + agua de la laguna) — sin clips de audio externos, así se ajusta exacto a la fauna representada y no arrastra temas de licencia. Se activa con el botón "🔊 Activar sonido ambiente" (requerido por la política de autoplay de los navegadores; no puede arrancar solo).
 - **Sonido posicional del agua**: el siseo de superficie + chapoteos ocasionales de la laguna usan un `PannerNode` (HRTF) ubicado en `WATER_CENTER` — se escucha más fuerte cerca del agua y se atenúa con la distancia. El listener de audio sigue la posición/orientación de la cámara en cada frame, así que el paneo reacciona a hacia dónde mira el usuario (relevante en VR).
+- **Mariposas** (16, tipo *Vanessa carye* — especie nativa muy común en la pradera uruguaya) revoloteando a media altura cerca de los arbustos con flor, con aleteo animado — refuerzan la idea de polinización sobre la vegetación florida.
+- **Chapoteos visibles**: cada chapoteo de la laguna dispara también un anillo que se expande y se desvanece en la superficie del agua, sincronizado con el sonido — el mismo evento se ve y se escucha, activo desde que carga la escena (no depende de que el sonido esté encendido).
+- **Balanceo por viento**: pasto, arbustos y copas de los árboles oscilan sutilmente cada frame (más marcado en el pasto, más leve en las copas) — recompone la matriz de cada instancia con una oscilación de dos frecuencias en vez de vértices estáticos, dando sensación de brisa sin depender de un shader propio.
 
-Explícitamente **sin locomoción** por ahora — la cámara es fija, lo que se mueve/anima es la fauna.
+Explícitamente **sin locomoción** por ahora — la cámara es fija, lo que se mueve/anima es la fauna y la vegetación (viento).
 
 ### Personajes (pendiente)
 
