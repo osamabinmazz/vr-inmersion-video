@@ -34,6 +34,16 @@ Para cambiar el entorno, edita las URLs en `scripts/download-assets.sh` por cual
 
 Este viewer es el componente digital complementario de una actividad territorial real en el entorno de la estatua de **Zapicán** (Punta de Rieles), con las escuelas N.º 179 y N.º 338 — ver el plan completo de la jornada: [Jornada Territorial — Estatua de Zapicán](https://claude.ai/artifact/Vw3QTJ81LjVXLRrpb2TDpL).
 
+### Fauna nativa y sonido ambiente
+
+La escena incluye fauna procedimental (mismo criterio que la vegetación — sin bajar modelos externos):
+
+- **Carpinchos** (3) en el borde de la laguna, con idle sutil.
+- **Bandada de aves** (10) volando en círculos bajos cerca de los árboles, con aleteo animado.
+- **Sonido ambiente** sintetizado con Web Audio API (viento + cantos de aves + gruñido ocasional de carpincho) — sin clips de audio externos, así se ajusta exacto a la fauna representada y no arrastra temas de licencia. Se activa con el botón "🔊 Activar sonido ambiente" (requerido por la política de autoplay de los navegadores; no puede arrancar solo).
+
+Explícitamente **sin locomoción** por ahora — la cámara es fija, lo que se mueve/anima es la fauna.
+
 ### Personajes (pendiente)
 
 La escena tiene 3 marcadores ubicados donde eventualmente irán figuras representando a **Vaimacá Perú**, **Abayubá** y **Guyunusa**, haciendo vida cotidiana de su época. Se decidió posponer su modelado porque:

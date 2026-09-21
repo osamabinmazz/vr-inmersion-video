@@ -413,6 +413,229 @@ grassPositions.forEach(([x, z], i) => {
 grassTufts.instanceMatrix.needsUpdate = true;
 scene.add(grassTufts);
 
+// --- Fauna nativa: carpinchos junto a la laguna + bandada de aves --------
+// Sin locomoción por pedido explícito: la fauna es lo que se mueve/anima
+// en la escena, no la cámara. Geometría procedimental (mismo criterio que
+// árboles/arbustos): nada de modelos externos pesados.
+
+// Carpinchos (Hydrochoerus hydrochaeris): cuerpo achatado, orejas
+// pequeñas, patas cortas — habitan justo en el borde de cuerpos de agua
+// como esta laguna, así que van ahí.
+const capybaraMat = new THREE.MeshStandardMaterial({ color: 0x6b5438, roughness: 0.95, flatShading: true });
+const capybaraDarkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughness: 0.95, flatShading: true });
+
+function makeCapybara() {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.5, 4, 8), capybaraMat);
+  body.rotation.z = Math.PI / 2;
+  body.position.y = 0.24;
+  body.castShadow = true;
+  group.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), capybaraMat);
+  head.position.set(0.42, 0.28, 0);
+  head.scale.set(1.15, 0.85, 0.9);
+  head.castShadow = true;
+  group.add(head);
+
+  for (const side of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), capybaraDarkMat);
+    ear.position.set(0.46, 0.4, side * 0.09);
+    group.add(ear);
+  }
+
+  const legGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.22, 6);
+  for (const [lx, lz] of [
+    [0.18, 0.14],
+    [0.18, -0.14],
+    [-0.18, 0.14],
+    [-0.18, -0.14],
+  ]) {
+    const leg = new THREE.Mesh(legGeo, capybaraDarkMat);
+    leg.position.set(lx, 0.11, lz);
+    leg.castShadow = true;
+    group.add(leg);
+  }
+
+  return group;
+}
+
+const CAPYBARA_COUNT = 3;
+const capybaras = [];
+for (let i = 0; i < CAPYBARA_COUNT; i++) {
+  const angle = rng() * Math.PI * 2;
+  const r = WATER_RADIUS + 0.3 + rng() * 0.8; // justo en el borde de la laguna
+  const x = WATER_CENTER[0] + Math.cos(angle) * r;
+  const z = WATER_CENTER[1] + Math.sin(angle) * r * WATER_Z_SQUASH;
+  const capy = makeCapybara();
+  capy.position.set(x, 0, z);
+  capy.rotation.y = Math.atan2(WATER_CENTER[0] - x, WATER_CENTER[1] - z) + Math.PI / 2; // mirando hacia el agua
+  capy.userData.bobOffset = rng() * Math.PI * 2;
+  scene.add(capy);
+  capybaras.push(capy);
+}
+
+// Bandada de aves pequeñas (tipo benteveo/hornero), volando en círculos
+// bajos cerca de los árboles.
+const birdBodyMat = new THREE.MeshStandardMaterial({ color: 0x4a3626, roughness: 0.8, flatShading: true });
+const birdBellyMat = new THREE.MeshStandardMaterial({ color: 0xd9c9a0, roughness: 0.8, flatShading: true });
+const birdWingMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.8, side: THREE.DoubleSide, flatShading: true });
+
+function makeBird() {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), birdBodyMat);
+  body.scale.set(1.6, 1, 1);
+  group.add(body);
+
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), birdBellyMat);
+  belly.position.set(0, -0.015, 0);
+  belly.scale.set(1.3, 0.8, 0.8);
+  group.add(belly);
+
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.03, 5), birdBodyMat);
+  beak.rotation.z = -Math.PI / 2;
+  beak.position.set(0.07, 0, 0);
+  group.add(beak);
+
+  const wingGeo = new THREE.PlaneGeometry(0.09, 0.04);
+  const wingL = new THREE.Mesh(wingGeo, birdWingMat);
+  wingL.position.set(0, 0, 0.03);
+  const wingR = new THREE.Mesh(wingGeo, birdWingMat);
+  wingR.position.set(0, 0, -0.03);
+  group.add(wingL, wingR);
+  group.userData.wings = [wingL, wingR];
+
+  return group;
+}
+
+const BIRD_COUNT = 10;
+const birds = [];
+for (let i = 0; i < BIRD_COUNT; i++) {
+  const bird = makeBird();
+  bird.userData.radius = 2 + rng() * 6;
+  bird.userData.center = [
+    (rng() - 0.5) * 16,
+    (rng() - 0.5) * 16,
+  ];
+  bird.userData.height = 2.2 + rng() * 1.8;
+  bird.userData.speed = 0.15 + rng() * 0.15;
+  bird.userData.phase = rng() * Math.PI * 2;
+  bird.userData.flapSpeed = 8 + rng() * 4;
+  scene.add(bird);
+  birds.push(bird);
+}
+
+// --- Sonido ambiente: viento + cantos de aves + carpincho -----------------
+// Sintetizado con Web Audio API (osciladores + ruido filtrado), sin bajar
+// clips externos: evita temas de licencia y peso, y se ajusta exacto a la
+// fauna representada en la escena. Requiere gesto del usuario (política de
+// autoplay del navegador) — se activa con el botón #sound-toggle.
+let audioCtx = null;
+
+function makeNoiseBuffer(ctx, seconds) {
+  const buffer = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  return buffer;
+}
+
+function startWind(ctx) {
+  const noise = ctx.createBufferSource();
+  noise.buffer = makeNoiseBuffer(ctx, 4);
+  noise.loop = true;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 500;
+
+  const gain = ctx.createGain();
+  gain.gain.value = 0.05;
+
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 0.07; // ráfagas lentas de viento
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 0.03;
+  lfo.connect(lfoGain);
+  lfoGain.connect(gain.gain);
+  lfo.start();
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  noise.start();
+}
+
+function playBirdChirp(ctx) {
+  const now = ctx.currentTime;
+  const notes = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < notes; i++) {
+    const t0 = now + i * 0.09;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    const baseFreq = 2200 + Math.random() * 1400;
+    osc.frequency.setValueAtTime(baseFreq, t0);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * (0.6 + Math.random() * 0.5), t0 + 0.07);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.06, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.08);
+
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.1);
+  }
+}
+
+function playCapybaraGrunt(ctx) {
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(110, now);
+  osc.frequency.exponentialRampToValueAtTime(70, now + 0.35);
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 300;
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(0.08, now + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+  osc.connect(filter);
+  filter.connect(g);
+  g.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.45);
+}
+
+function scheduleWildlifeSounds(ctx) {
+  const tick = () => {
+    if (Math.random() < 0.7) playBirdChirp(ctx);
+    else playCapybaraGrunt(ctx);
+    setTimeout(tick, 1800 + Math.random() * 3500);
+  };
+  setTimeout(tick, 1000);
+}
+
+const soundToggle = document.getElementById("sound-toggle");
+if (soundToggle) {
+  soundToggle.addEventListener("click", () => {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      startWind(audioCtx);
+      scheduleWildlifeSounds(audioCtx);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    soundToggle.textContent = "🔊 Sonido activado";
+    soundToggle.disabled = true;
+  });
+}
+
 // --- Camera rig -------------------------------------------------------
 const cameraRig = new THREE.Group();
 scene.add(cameraRig);
@@ -485,6 +708,25 @@ renderer.setAnimationLoop((time) => {
   }
   waterNormalTex.offset.x = time * 0.00002;
   waterNormalTex.offset.y = time * 0.000012;
+
+  const t = time * 0.001;
+  for (const bird of birds) {
+    const { radius, center, height, speed, phase, flapSpeed } = bird.userData;
+    const angle = t * speed + phase;
+    bird.position.set(
+      center[0] + Math.cos(angle) * radius,
+      height + Math.sin(t * 0.6 + phase) * 0.2,
+      center[1] + Math.sin(angle) * radius
+    );
+    bird.rotation.y = -angle + Math.PI / 2; // mirando en la dirección de vuelo
+    const flap = Math.sin(t * flapSpeed + phase) * 0.6;
+    for (const wing of bird.userData.wings) wing.rotation.x = flap;
+  }
+
+  for (const capy of capybaras) {
+    capy.position.y = 0.01 + 0.01 * Math.sin(t * 0.8 + capy.userData.bobOffset);
+  }
+
   renderer.render(scene, camera);
 });
 
