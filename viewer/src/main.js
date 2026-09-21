@@ -85,6 +85,66 @@ const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.receiveShadow = true;
 scene.add(ground);
 
+// --- Cuerpo de agua: laguna --------------------------------------------
+// Pequeña laguna, coherente con los puntos de agua reales junto a los que
+// se asentaban los charrúas. Refleja el HDRI (scene.environment, ya
+// cargado más arriba); la ondulación viene de un normal map procedimental
+// (sin depender de texturas externas) que se anima lentamente.
+const WATER_CENTER = [7, 4];
+const WATER_RADIUS = 3.2;
+const WATER_Z_SQUASH = 0.75; // achata la laguna en Z para forma elíptica
+
+function insideWater(x, z) {
+  const dx = x - WATER_CENTER[0];
+  const dz = (z - WATER_CENTER[1]) / WATER_Z_SQUASH;
+  const margin = WATER_RADIUS + 0.6;
+  return dx * dx + dz * dz < margin * margin;
+}
+
+function makeWaterNormalTexture() {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgb(128,128,255)";
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 90; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 6 + Math.random() * 18;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, "rgba(170,170,255,0.5)");
+    grad.addColorStop(1, "rgba(128,128,255,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 4);
+  return tex;
+}
+
+const waterNormalTex = makeWaterNormalTexture();
+
+const waterGeo = new THREE.CircleGeometry(WATER_RADIUS, 64);
+waterGeo.rotateX(-Math.PI / 2);
+waterGeo.scale(1, 1, WATER_Z_SQUASH);
+
+const waterMat = new THREE.MeshPhysicalMaterial({
+  color: 0x1c4450,
+  roughness: 0.08,
+  metalness: 0.0,
+  normalMap: waterNormalTex,
+  normalScale: new THREE.Vector2(0.25, 0.25),
+  envMapIntensity: 1.2,
+});
+
+const water = new THREE.Mesh(waterGeo, waterMat);
+water.position.set(WATER_CENTER[0], 0.17, WATER_CENTER[1]); // por encima del displacementScale del suelo (0.15) para que no quede tapada
+scene.add(water);
+
 // --- Vegetación nativa: árboles y arbustos (espinillo/algarrobo) ----------
 // Generados procedimentalmente (bajo poly, InstancedMesh) en vez de bajar
 // modelos de asset packs: da buen rendimiento en VR y una silueta más fiel
@@ -121,7 +181,7 @@ function scatterPositions(count, rMin, rMax, minDistFromPOI) {
     const r = rMin + rng() * (rMax - rMin);
     const x = Math.cos(angle) * r;
     const z = Math.sin(angle) * r;
-    if (farFromPOI(x, z, minDistFromPOI)) points.push([x, z]);
+    if (farFromPOI(x, z, minDistFromPOI) && !insideWater(x, z)) points.push([x, z]);
   }
   return points;
 }
@@ -330,6 +390,8 @@ renderer.setAnimationLoop((time) => {
   for (const ring of poiMarkers) {
     ring.material.opacity = 0.5 + 0.3 * Math.sin(time * 0.002 + ring.position.x);
   }
+  waterNormalTex.offset.x = time * 0.00002;
+  waterNormalTex.offset.y = time * 0.000012;
   renderer.render(scene, camera);
 });
 
