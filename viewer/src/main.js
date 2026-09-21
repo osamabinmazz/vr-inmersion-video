@@ -94,11 +94,36 @@ const WATER_CENTER = [7, 4];
 const WATER_RADIUS = 3.2;
 const WATER_Z_SQUASH = 0.75; // achata la laguna en Z para forma elíptica
 
-function insideWater(x, z) {
+// Contorno IRREGULAR, no un círculo: una laguna/arroyo real tiene la orilla
+// sinuosa, con entrantes y salientes. El radio varía con el ángulo como
+// suma de senos de distinta frecuencia (determinista, sin depender del rng
+// global, que se define más abajo). Todo lo demás — orilla de barro,
+// juncos, sauces, capibaras, chapoteos — se cuelga de esta misma función,
+// así que la forma queda coherente en toda la escena.
+function waterRadiusAt(angle) {
+  return (
+    WATER_RADIUS *
+    (1 +
+      0.2 * Math.sin(angle + 0.7) +
+      0.13 * Math.sin(angle * 2 + 2.1) +
+      0.07 * Math.sin(angle * 3 + 4.3) +
+      0.04 * Math.sin(angle * 5 + 1.2))
+  );
+}
+
+function insideWater(x, z, margin = 0.6) {
   const dx = x - WATER_CENTER[0];
   const dz = (z - WATER_CENTER[1]) / WATER_Z_SQUASH;
-  const margin = WATER_RADIUS + 0.6;
-  return dx * dx + dz * dz < margin * margin;
+  const angle = Math.atan2(dz, dx);
+  return Math.hypot(dx, dz) < waterRadiusAt(angle) + margin;
+}
+
+function waterOutlinePoint(angle, radiusScale) {
+  const r = waterRadiusAt(angle) * radiusScale;
+  return [
+    WATER_CENTER[0] + Math.cos(angle) * r,
+    WATER_CENTER[1] + Math.sin(angle) * r * WATER_Z_SQUASH,
+  ];
 }
 
 function makeWaterNormalTexture() {
@@ -128,22 +153,68 @@ function makeWaterNormalTexture() {
 
 const waterNormalTex = makeWaterNormalTexture();
 
-const waterGeo = new THREE.CircleGeometry(WATER_RADIUS, 64);
-waterGeo.rotateX(-Math.PI / 2);
+const WATER_SEGMENTS = 128;
+
+function makeWaterOutlineShape(radiusScale) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i <= WATER_SEGMENTS; i++) {
+    const a = (i / WATER_SEGMENTS) * Math.PI * 2;
+    const r = waterRadiusAt(a) * radiusScale;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  return shape;
+}
+
+const waterGeo = new THREE.ShapeGeometry(makeWaterOutlineShape(1), 1);
+waterGeo.rotateX(-Math.PI / 2); // la Shape se construye en XY; se acuesta al plano XZ
 waterGeo.scale(1, 1, WATER_Z_SQUASH);
 
+// Agua de arroyo/laguna real: turbia, verdosa-parda por los sedimentos, no
+// azul de pileta. Conserva reflejo del cielo (clearcoat + envMap) porque en
+// la referencia se ve el cielo espejado en la superficie, pero el cuerpo del
+// agua es opaco y terroso.
 const waterMat = new THREE.MeshPhysicalMaterial({
-  color: 0x1c4450,
-  roughness: 0.08,
+  color: 0x46422c,
+  roughness: 0.55,
   metalness: 0.0,
   normalMap: waterNormalTex,
-  normalScale: new THREE.Vector2(0.25, 0.25),
-  envMapIntensity: 1.2,
+  normalScale: new THREE.Vector2(0.55, 0.55),
+  envMapIntensity: 0.45, // reflejo apenas insinuado: el agua turbia no es espejo
+  clearcoat: 0.35,
+  clearcoatRoughness: 0.3,
 });
 
 const water = new THREE.Mesh(waterGeo, waterMat);
 water.position.set(WATER_CENTER[0], 0.17, WATER_CENTER[1]); // por encima del displacementScale del suelo (0.15) para que no quede tapada
 scene.add(water);
+
+// Orilla de barro expuesto: banda de tierra sin pasto entre el agua y la
+// pradera, como en la referencia (el nivel del agua sube y baja y deja el
+// borde pelado). Es un anillo con el mismo contorno irregular.
+const shoreShape = makeWaterOutlineShape(1.3);
+const shoreHole = new THREE.Path();
+for (let i = 0; i <= WATER_SEGMENTS; i++) {
+  const a = (i / WATER_SEGMENTS) * Math.PI * 2;
+  const r = waterRadiusAt(a) * 0.98; // un poco por dentro del agua: evita z-fighting en el borde
+  const x = Math.cos(a) * r;
+  const y = Math.sin(a) * r;
+  if (i === 0) shoreHole.moveTo(x, y);
+  else shoreHole.lineTo(x, y);
+}
+shoreShape.holes.push(shoreHole);
+
+const shoreGeo = new THREE.ShapeGeometry(shoreShape, 1);
+shoreGeo.rotateX(-Math.PI / 2);
+shoreGeo.scale(1, 1, WATER_Z_SQUASH);
+
+const shoreMat = new THREE.MeshStandardMaterial({ color: 0x6d5b46, roughness: 1.0 });
+const shore = new THREE.Mesh(shoreGeo, shoreMat);
+shore.position.set(WATER_CENTER[0], 0.162, WATER_CENTER[1]); // apenas bajo el agua, sobre el suelo
+shore.receiveShadow = true;
+scene.add(shore);
 
 // Ondas visuales de chapoteo: un anillo que se expande y se desvanece en
 // la superficie, disparado junto con el sonido de chapoteo (playWaterSplash,
@@ -156,9 +227,7 @@ let currentTime = 0; // actualizado en el render loop; usado para el timing de l
 
 function spawnSplashRing() {
   const angle = rng() * Math.PI * 2;
-  const r = rng() * WATER_RADIUS * 0.8;
-  const x = WATER_CENTER[0] + Math.cos(angle) * r;
-  const z = WATER_CENTER[1] + Math.sin(angle) * r * WATER_Z_SQUASH;
+  const [x, z] = waterOutlinePoint(angle, rng() * 0.8);
   const mat = new THREE.MeshBasicMaterial({ color: 0xdfeff2, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
   const ring = new THREE.Mesh(splashRingGeo, mat);
   ring.position.set(x, 0.19, z);
@@ -604,6 +673,131 @@ grassPositions.forEach(([x, z], i) => {
 grassTufts.instanceMatrix.needsUpdate = true;
 scene.add(grassTufts);
 
+// --- Vegetación ribereña: totoras/juncos + sauce criollo -----------------
+// En una laguna real la orilla no es pasto corto: hay una franja densa de
+// totora (Schoenoplectus californicus) y juncos, y sauces criollos
+// (Salix humboldtiana — el sauce NATIVO del monte ribereño uruguayo, no el
+// sauce llorón asiático) inclinados sobre el agua con las ramas colgando.
+const REED_CLUMPS = 30;
+const REEDS_PER_CLUMP = 18;
+const reedGeo = new THREE.ConeGeometry(0.011, 0.8, 3);
+reedGeo.translate(0, 0.4, 0);
+const reedMat = new THREE.MeshStandardMaterial({ color: 0x5d7a3e, roughness: 1.0, flatShading: true });
+const reeds = new THREE.InstancedMesh(reedGeo, reedMat, REED_CLUMPS * REEDS_PER_CLUMP);
+reeds.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+reeds.castShadow = true;
+
+const reedSway = [];
+let reedIdx = 0;
+for (let c = 0; c < REED_CLUMPS; c++) {
+  const clumpAngle = (c / REED_CLUMPS) * Math.PI * 2 + rng() * 0.2;
+  // los mechones se plantan pisando el borde del agua, como en la referencia
+  const clumpScale = 0.97 + rng() * 0.22;
+  const [cx, cz] = waterOutlinePoint(clumpAngle, clumpScale);
+  for (let r = 0; r < REEDS_PER_CLUMP; r++) {
+    const spread = 0.24;
+    const x = cx + (rng() - 0.5) * spread;
+    const z = cz + (rng() - 0.5) * spread;
+    const s = 0.65 + rng() * 0.7;
+    const baseRotX = (rng() - 0.5) * 0.25;
+    const baseRotZ = (rng() - 0.5) * 0.25;
+    const rotY = rng() * Math.PI * 2;
+    dummy.position.set(x, 0.14, z);
+    dummy.rotation.set(baseRotX, rotY, baseRotZ);
+    dummy.scale.set(1, s, 1);
+    dummy.updateMatrix();
+    reeds.setMatrixAt(reedIdx, dummy.matrix);
+    reedSway.push({ index: reedIdx, x, z, s, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
+    reedIdx++;
+  }
+}
+reeds.instanceMatrix.needsUpdate = true;
+scene.add(reeds);
+
+// Sauces criollos: tronco inclinado sobre el agua + cortina de ramas
+// colgantes. Las ramas son planos finos con el pivote ARRIBA (en el punto
+// donde nacen), así el balanceo de viento las mueve desde el anclaje y la
+// punta es la que más se desplaza — que es como cuelga un sauce de verdad.
+const WILLOW_COUNT = 4;
+const WHIPS_PER_WILLOW = 150;
+const willowTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3d2e, roughness: 0.95, flatShading: true });
+const willowCrownMat = new THREE.MeshStandardMaterial({ color: 0x6e8c4e, roughness: 0.9, flatShading: true });
+const willowWhipMat = new THREE.MeshStandardMaterial({ color: 0x7d9a5a, roughness: 0.85, flatShading: true });
+
+// Ramitas colgantes finas (conos, no planos anchos): muchas y delgadas
+// leen como cortina de sauce; pocas y anchas leían como cintas sueltas.
+const whipGeo = new THREE.ConeGeometry(0.018, 1, 3);
+whipGeo.translate(0, -0.5, 0); // pivote en el extremo superior, donde nace la rama
+const willowWhips = new THREE.InstancedMesh(whipGeo, willowWhipMat, WILLOW_COUNT * WHIPS_PER_WILLOW);
+willowWhips.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+willowWhips.castShadow = true;
+
+const whipSway = [];
+let whipIdx = 0;
+for (let w = 0; w < WILLOW_COUNT; w++) {
+  const angle = (w / WILLOW_COUNT) * Math.PI * 2 + 0.6 + rng() * 0.5;
+  const [bx, bz] = waterOutlinePoint(angle, 1.45 + rng() * 0.25);
+
+  // se inclina hacia el centro del agua
+  const toWaterX = WATER_CENTER[0] - bx;
+  const toWaterZ = WATER_CENTER[1] - bz;
+  const toWaterLen = Math.hypot(toWaterX, toWaterZ) || 1;
+  const dirX = toWaterX / toWaterLen;
+  const dirZ = toWaterZ / toWaterLen;
+
+  const height = 3.1 + rng() * 1.1;
+  const lean = 0.16 + rng() * 0.1;
+
+  const trunkGeo = new THREE.CylinderGeometry(0.07, 0.15, height, 8);
+  trunkGeo.translate(0, height / 2, 0);
+  const trunk = new THREE.Mesh(trunkGeo, willowTrunkMat);
+  trunk.position.set(bx, 0.1, bz);
+  trunk.rotation.x = dirZ * lean;
+  trunk.rotation.z = -dirX * lean;
+  trunk.castShadow = true;
+  scene.add(trunk);
+
+  // copa desplazada por la inclinación del tronco
+  const crownX = bx + dirX * height * Math.sin(lean);
+  const crownZ = bz + dirZ * height * Math.sin(lean);
+  const crownY = 0.1 + height * Math.cos(lean);
+  const crownSpread = 1.25 + rng() * 0.7;
+
+  // Masa de follaje en la copa: sin esto el tronco quedaba pelado y las
+  // ramas colgantes parecían flotar sueltas en el aire.
+  const crown = new THREE.Mesh(makeOrganicGeometry(new THREE.IcosahedronGeometry(1, 2), 0.3, 90 + w), willowCrownMat);
+  crown.position.set(crownX, crownY - 0.15, crownZ);
+  crown.scale.set(crownSpread * 0.85, crownSpread * 0.5, crownSpread * 0.85);
+  crown.castShadow = true;
+  scene.add(crown);
+
+  for (let k = 0; k < WHIPS_PER_WILLOW; k++) {
+    const a = rng() * Math.PI * 2;
+    // sesgadas al borde de la copa: es de ahí de donde cuelgan las ramas
+    // ceñidas al perímetro de la copa (que mide crownSpread * 0.85): si se
+    // dispersan más allá, quedan colgando del aire en vez del follaje
+    const rad = crownSpread * 0.85 * (0.62 + 0.38 * Math.sqrt(rng()));
+    const x = crownX + Math.cos(a) * rad;
+    const z = crownZ + Math.sin(a) * rad;
+    // las del borde nacen más abajo: da la silueta redondeada del sauce
+    const y = crownY - 0.35 - (rad / crownSpread) * (0.3 + rng() * 0.25);
+    // cortas y muy juntas: una cortina tupida, no palitos sueltos y largos
+    const len = 0.45 + rng() * 0.75;
+    const baseRotX = (rng() - 0.5) * 0.16;
+    const baseRotZ = (rng() - 0.5) * 0.16;
+    const rotY = rng() * Math.PI * 2;
+    dummy.position.set(x, y, z);
+    dummy.rotation.set(baseRotX, rotY, baseRotZ);
+    dummy.scale.set(1, len, 1);
+    dummy.updateMatrix();
+    willowWhips.setMatrixAt(whipIdx, dummy.matrix);
+    whipSway.push({ index: whipIdx, x, y, z, len, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
+    whipIdx++;
+  }
+}
+willowWhips.instanceMatrix.needsUpdate = true;
+scene.add(willowWhips);
+
 // --- Fauna nativa: carpinchos junto a la laguna + bandada de aves --------
 // Sin locomoción por pedido explícito: la fauna es lo que se mueve/anima
 // en la escena, no la cámara. Geometría procedimental (mismo criterio que
@@ -669,9 +863,7 @@ const CAPYBARA_COUNT = 3;
 const capybaras = [];
 for (let i = 0; i < CAPYBARA_COUNT; i++) {
   const angle = rng() * Math.PI * 2;
-  const r = WATER_RADIUS + 0.3 + rng() * 0.8; // justo en el borde de la laguna
-  const x = WATER_CENTER[0] + Math.cos(angle) * r;
-  const z = WATER_CENTER[1] + Math.sin(angle) * r * WATER_Z_SQUASH;
+  const [x, z] = waterOutlinePoint(angle, 1.12 + rng() * 0.14); // sobre la orilla de barro
   const capy = makeCapybara();
   capy.position.set(x, 0, z);
   capy.rotation.y = Math.atan2(WATER_CENTER[0] - x, WATER_CENTER[1] - z) + Math.PI / 2; // mirando hacia el agua
@@ -1178,6 +1370,29 @@ renderer.setAnimationLoop((time) => {
     lf.mesh.setMatrixAt(lf.index, dummy.matrix);
   }
   for (const mesh of leafMeshes) mesh.instanceMatrix.needsUpdate = true;
+
+  // Juncos/totoras: altos y flexibles, se mueven más que el pasto.
+  for (const rd of reedSway) {
+    const sway = Math.sin(t * 1.0 + rd.phase) * 0.2 + Math.sin(t * 2.2 + rd.phase * 1.5) * 0.07;
+    dummy.position.set(rd.x, 0.14, rd.z);
+    dummy.rotation.set(rd.baseRotX + sway, rd.rotY, rd.baseRotZ + sway * 0.7);
+    dummy.scale.set(1, rd.s, 1);
+    dummy.updateMatrix();
+    reeds.setMatrixAt(rd.index, dummy.matrix);
+  }
+  reeds.instanceMatrix.needsUpdate = true;
+
+  // Ramas colgantes del sauce: lo que más se mueve de toda la escena, y
+  // como el pivote está arriba, la punta describe el arco más amplio.
+  for (const wp of whipSway) {
+    const sway = Math.sin(t * 0.8 + wp.phase) * 0.26 + Math.sin(t * 1.9 + wp.phase * 1.4) * 0.1;
+    dummy.position.set(wp.x, wp.y, wp.z);
+    dummy.rotation.set(wp.baseRotX + sway, wp.rotY, wp.baseRotZ + sway * 0.8);
+    dummy.scale.set(1, wp.len, 1);
+    dummy.updateMatrix();
+    willowWhips.setMatrixAt(wp.index, dummy.matrix);
+  }
+  willowWhips.instanceMatrix.needsUpdate = true;
 
   for (let i = 0; i < treeCanopySway.length; i++) {
     const c = treeCanopySway[i];

@@ -49,6 +49,16 @@ La escena incluye fauna procedimental (mismo criterio que la vegetación — sin
 - **Capibara con más definición**: hocico rectangular achatado + fosas nasales (rasgo distintivo real del capibara, ausente en el modelo anterior) y más segmentos en cuerpo/cabeza/orejas.
 - **Aves con cola**: se agregó una cola en abanico, visible tanto en vuelo como si se posaran, para leer mejor la silueta a distancia.
 
+### Laguna con referencia fotográfica
+
+La laguna se rehízo a partir de una foto real de un arroyo/laguna uruguaya, corrigiendo lo que la delataba como sintética:
+
+- **Contorno irregular** en vez de círculo perfecto: el radio varía con el ángulo (suma de senos, determinista). Todo lo demás —orilla, juncos, sauces, capibaras, chapoteos— se cuelga de la misma función `waterRadiusAt()`, así que la forma queda coherente en toda la escena.
+- **Agua turbia verdosa-parda**, no azul de pileta: reflejo del cielo apenas insinuado (`envMapIntensity` bajo + roughness alta), porque el agua con sedimentos no es un espejo.
+- **Orilla de barro expuesto**: franja de tierra sin pasto entre el agua y la pradera, como deja el nivel del agua al subir y bajar.
+- **Totoras y juncos** (*Schoenoplectus californicus*) en mechones pisando el borde del agua.
+- **Sauces criollos** (*Salix humboldtiana* — el sauce **nativo** del monte ribereño uruguayo, no el sauce llorón asiático) inclinados sobre el agua, con copa de follaje y cortina de ramas colgantes que se balancean con el viento (son lo que más se mueve de la escena, con el pivote de rotación en el punto donde nace la rama).
+
 Explícitamente **sin locomoción** por ahora — la cámara es fija, lo que se mueve/anima es la fauna y la vegetación (viento).
 
 ### Personajes (pendiente)
