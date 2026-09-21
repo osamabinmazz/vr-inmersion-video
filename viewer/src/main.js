@@ -178,14 +178,21 @@ canopies.instanceMatrix.needsUpdate = true;
 canopies.instanceColor.needsUpdate = true;
 scene.add(trunks, canopies);
 
-// Arbustos nativos vistosos: 4 "especies" con geometría propia (no el
-// mismo sólido escalado) + flores de acento, inspiradas en flora nativa
-// uruguaya — chirca, espinillo joven, duraznillo, amancay.
+// Arbustos nativos vistosos: 5 especies REALES del Uruguay (no genéricas),
+// cada una con geometría propia + color de flor botánicamente fiel.
+// (Aromo/Espinillo — Acacia caven — ya está representado como árbol más
+// arriba, no se duplica acá.)
 const SHRUB_SPECIES = [
-  { name: "chirca", geo: () => new THREE.IcosahedronGeometry(0.32, 1), foliage: 0x5a7a4a, flower: 0xf5f5f0, count: 26 },
-  { name: "espinillo joven", geo: () => new THREE.DodecahedronGeometry(0.3, 0), foliage: 0x7a8f4a, flower: 0xf4c430, count: 26 },
-  { name: "duraznillo", geo: () => new THREE.OctahedronGeometry(0.36, 1), foliage: 0x4f6b3a, flower: 0xc9a0dc, count: 24 },
-  { name: "amancay", geo: () => new THREE.TetrahedronGeometry(0.32, 1), foliage: 0x6a8a5a, flower: 0xff8c42, count: 20 },
+  // Pata de vaca (Bauhinia forficata): flor blanca en forma de mariposa
+  { name: "pata de vaca", geo: () => new THREE.IcosahedronGeometry(0.34, 1), foliage: 0x5a7a4a, flower: 0xfbfaf5, roughness: 0.85, count: 22 },
+  // Carqueja (Baccharis trimera): subarbusto rústico, tallos aplanados/angulosos
+  { name: "carqueja", geo: () => new THREE.TetrahedronGeometry(0.3, 1), foliage: 0x8a9a5a, flower: 0xd9d18a, roughness: 0.95, count: 24 },
+  // Malva sonrojada (Calyculogygas uruguayensis): flores rojas vistosas, especie prioritaria
+  { name: "malva sonrojada", geo: () => new THREE.DodecahedronGeometry(0.3, 0), foliage: 0x6a8a4a, flower: 0xe0354f, roughness: 0.9, count: 20 },
+  // Chilca (Baccharis salicifolia): monte ribereño, atrae polinizadores
+  { name: "chilca", geo: () => new THREE.OctahedronGeometry(0.36, 1), foliage: 0x4f6b3a, flower: 0xf0ece0, roughness: 0.9, count: 24 },
+  // Espina amarilla (Berberis laurina): follaje brillante, flor amarilla llamativa
+  { name: "espina amarilla", geo: () => new THREE.IcosahedronGeometry(0.3, 0), foliage: 0x3f6b3f, flower: 0xffd400, roughness: 0.35, count: 20 },
 ];
 
 const flowerGeo = new THREE.IcosahedronGeometry(0.045, 0);
@@ -194,7 +201,7 @@ const FLOWERS_PER_SHRUB = 3;
 for (const species of SHRUB_SPECIES) {
   const positions = scatterPositions(species.count, 1.8, 9.5, 1.0);
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: species.foliage, roughness: 0.9, flatShading: true });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: species.foliage, roughness: species.roughness ?? 0.9, flatShading: true });
   const body = new THREE.InstancedMesh(species.geo(), bodyMat, positions.length);
   body.castShadow = true;
   body.receiveShadow = true;
