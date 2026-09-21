@@ -622,6 +622,87 @@ function scheduleWildlifeSounds(ctx) {
   setTimeout(tick, 1000);
 }
 
+// Sonido de agua de la laguna: posicional (PannerNode) en las coordenadas
+// reales de WATER_CENTER — se escucha más fuerte cerca del agua y se
+// atenúa con la distancia, algo que importa en VR cuando el usuario gira
+// la cabeza. Combina un "siseo" de superficie (ruido pasa-banda continuo)
+// con chapoteos puntuales aleatorios.
+function makeWaterPanner(ctx) {
+  const panner = ctx.createPanner();
+  panner.panningModel = "HRTF";
+  panner.distanceModel = "inverse";
+  panner.refDistance = 2;
+  panner.maxDistance = 25;
+  panner.rolloffFactor = 1.2;
+  if (panner.positionX) {
+    panner.positionX.value = WATER_CENTER[0];
+    panner.positionY.value = 0.2;
+    panner.positionZ.value = WATER_CENTER[1];
+  } else {
+    panner.setPosition(WATER_CENTER[0], 0.2, WATER_CENTER[1]);
+  }
+  panner.connect(ctx.destination);
+  return panner;
+}
+
+function startWaterAmbience(ctx, panner) {
+  const noise = ctx.createBufferSource();
+  noise.buffer = makeNoiseBuffer(ctx, 4);
+  noise.loop = true;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = 1400;
+  filter.Q.value = 0.6;
+
+  const gain = ctx.createGain();
+  gain.gain.value = 0.06;
+
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 0.2; // ondulación suave de la superficie
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 0.02;
+  lfo.connect(lfoGain);
+  lfoGain.connect(gain.gain);
+  lfo.start();
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(panner);
+  noise.start();
+}
+
+function playWaterSplash(ctx, panner) {
+  const now = ctx.currentTime;
+  const noise = ctx.createBufferSource();
+  noise.buffer = makeNoiseBuffer(ctx, 0.3);
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(2500, now);
+  filter.frequency.exponentialRampToValueAtTime(700, now + 0.25);
+  filter.Q.value = 1.2;
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(0.12, now + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+  noise.connect(filter);
+  filter.connect(g);
+  g.connect(panner);
+  noise.start(now);
+  noise.stop(now + 0.3);
+}
+
+function scheduleWaterSplashes(ctx, panner) {
+  const tick = () => {
+    playWaterSplash(ctx, panner);
+    setTimeout(tick, 4000 + Math.random() * 6000);
+  };
+  setTimeout(tick, 2500);
+}
+
 const soundToggle = document.getElementById("sound-toggle");
 if (soundToggle) {
   soundToggle.addEventListener("click", () => {
@@ -629,6 +710,9 @@ if (soundToggle) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       startWind(audioCtx);
       scheduleWildlifeSounds(audioCtx);
+      const waterPanner = makeWaterPanner(audioCtx);
+      startWaterAmbience(audioCtx, waterPanner);
+      scheduleWaterSplashes(audioCtx, waterPanner);
     }
     if (audioCtx.state === "suspended") audioCtx.resume();
     soundToggle.textContent = "🔊 Sonido activado";
@@ -702,12 +786,38 @@ window.addEventListener("resize", () => {
 });
 
 // --- Loop -----------------------------------------------------------------
+const listenerForward = new THREE.Vector3();
+const listenerUp = new THREE.Vector3();
+
 renderer.setAnimationLoop((time) => {
   for (const ring of poiMarkers) {
     ring.material.opacity = 0.5 + 0.3 * Math.sin(time * 0.002 + ring.position.x);
   }
   waterNormalTex.offset.x = time * 0.00002;
   waterNormalTex.offset.y = time * 0.000012;
+
+  // Listener de audio sigue a la cámara: el paneo espacial del agua
+  // reacciona a hacia dónde mira el usuario (clave en VR).
+  if (audioCtx) {
+    const listener = audioCtx.listener;
+    const camPos = camera.getWorldPosition(new THREE.Vector3());
+    camera.getWorldDirection(listenerForward);
+    listenerUp.set(0, 1, 0).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+    if (listener.positionX) {
+      listener.positionX.value = camPos.x;
+      listener.positionY.value = camPos.y;
+      listener.positionZ.value = camPos.z;
+      listener.forwardX.value = listenerForward.x;
+      listener.forwardY.value = listenerForward.y;
+      listener.forwardZ.value = listenerForward.z;
+      listener.upX.value = listenerUp.x;
+      listener.upY.value = listenerUp.y;
+      listener.upZ.value = listenerUp.z;
+    } else {
+      listener.setPosition(camPos.x, camPos.y, camPos.z);
+      listener.setOrientation(listenerForward.x, listenerForward.y, listenerForward.z, listenerUp.x, listenerUp.y, listenerUp.z);
+    }
+  }
 
   const t = time * 0.001;
   for (const bird of birds) {

@@ -40,7 +40,8 @@ La escena incluye fauna procedimental (mismo criterio que la vegetación — sin
 
 - **Carpinchos** (3) en el borde de la laguna, con idle sutil.
 - **Bandada de aves** (10) volando en círculos bajos cerca de los árboles, con aleteo animado.
-- **Sonido ambiente** sintetizado con Web Audio API (viento + cantos de aves + gruñido ocasional de carpincho) — sin clips de audio externos, así se ajusta exacto a la fauna representada y no arrastra temas de licencia. Se activa con el botón "🔊 Activar sonido ambiente" (requerido por la política de autoplay de los navegadores; no puede arrancar solo).
+- **Sonido ambiente** sintetizado con Web Audio API (viento + cantos de aves + gruñido ocasional de carpincho + agua de la laguna) — sin clips de audio externos, así se ajusta exacto a la fauna representada y no arrastra temas de licencia. Se activa con el botón "🔊 Activar sonido ambiente" (requerido por la política de autoplay de los navegadores; no puede arrancar solo).
+- **Sonido posicional del agua**: el siseo de superficie + chapoteos ocasionales de la laguna usan un `PannerNode` (HRTF) ubicado en `WATER_CENTER` — se escucha más fuerte cerca del agua y se atenúa con la distancia. El listener de audio sigue la posición/orientación de la cámara en cada frame, así que el paneo reacciona a hacia dónde mira el usuario (relevante en VR).
 
 Explícitamente **sin locomoción** por ahora — la cámara es fija, lo que se mueve/anima es la fauna.
 
