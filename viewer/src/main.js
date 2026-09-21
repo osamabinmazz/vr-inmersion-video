@@ -178,25 +178,61 @@ canopies.instanceMatrix.needsUpdate = true;
 canopies.instanceColor.needsUpdate = true;
 scene.add(trunks, canopies);
 
-// Arbustos bajos, más cerca de la zona transitable
-const SHRUB_COUNT = 90;
-const shrubPositions = scatterPositions(SHRUB_COUNT, 1.8, 9, 1.0);
-const shrubGeo = new THREE.IcosahedronGeometry(0.3, 0);
-const shrubMat = new THREE.MeshStandardMaterial({ color: 0x8a8a4a, roughness: 0.95, flatShading: true });
-const shrubs = new THREE.InstancedMesh(shrubGeo, shrubMat, shrubPositions.length);
-shrubs.castShadow = true;
-shrubs.receiveShadow = true;
+// Arbustos nativos vistosos: 4 "especies" con geometría propia (no el
+// mismo sólido escalado) + flores de acento, inspiradas en flora nativa
+// uruguaya — chirca, espinillo joven, duraznillo, amancay.
+const SHRUB_SPECIES = [
+  { name: "chirca", geo: () => new THREE.IcosahedronGeometry(0.32, 1), foliage: 0x5a7a4a, flower: 0xf5f5f0, count: 26 },
+  { name: "espinillo joven", geo: () => new THREE.DodecahedronGeometry(0.3, 0), foliage: 0x7a8f4a, flower: 0xf4c430, count: 26 },
+  { name: "duraznillo", geo: () => new THREE.OctahedronGeometry(0.36, 1), foliage: 0x4f6b3a, flower: 0xc9a0dc, count: 24 },
+  { name: "amancay", geo: () => new THREE.TetrahedronGeometry(0.32, 1), foliage: 0x6a8a5a, flower: 0xff8c42, count: 20 },
+];
 
-shrubPositions.forEach(([x, z], i) => {
-  const s = 0.4 + rng() * 0.6;
-  dummy.position.set(x, s * 0.3, z);
-  dummy.rotation.set(0, rng() * Math.PI * 2, 0);
-  dummy.scale.set(s, s * (0.6 + rng() * 0.3), s);
-  dummy.updateMatrix();
-  shrubs.setMatrixAt(i, dummy.matrix);
-});
-shrubs.instanceMatrix.needsUpdate = true;
-scene.add(shrubs);
+const flowerGeo = new THREE.IcosahedronGeometry(0.045, 0);
+const FLOWERS_PER_SHRUB = 3;
+
+for (const species of SHRUB_SPECIES) {
+  const positions = scatterPositions(species.count, 1.8, 9.5, 1.0);
+
+  const bodyMat = new THREE.MeshStandardMaterial({ color: species.foliage, roughness: 0.9, flatShading: true });
+  const body = new THREE.InstancedMesh(species.geo(), bodyMat, positions.length);
+  body.castShadow = true;
+  body.receiveShadow = true;
+
+  const flowerMat = new THREE.MeshStandardMaterial({
+    color: species.flower,
+    roughness: 0.5,
+    emissive: species.flower,
+    emissiveIntensity: 0.15,
+    flatShading: true,
+  });
+  const flowers = new THREE.InstancedMesh(flowerGeo, flowerMat, positions.length * FLOWERS_PER_SHRUB);
+
+  let flowerIdx = 0;
+  positions.forEach(([x, z], i) => {
+    const s = 0.6 + rng() * 0.6;
+    const h = s * 0.35;
+    dummy.position.set(x, h, z);
+    dummy.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
+    dummy.scale.set(s, s * (0.8 + rng() * 0.4), s);
+    dummy.updateMatrix();
+    body.setMatrixAt(i, dummy.matrix);
+
+    for (let f = 0; f < FLOWERS_PER_SHRUB; f++) {
+      const ang = rng() * Math.PI * 2;
+      const rad = s * (0.25 + rng() * 0.2);
+      dummy.position.set(x + Math.cos(ang) * rad, h + s * 0.25 + rng() * 0.15, z + Math.sin(ang) * rad);
+      dummy.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
+      const fs = 0.7 + rng() * 0.6;
+      dummy.scale.set(fs, fs, fs);
+      dummy.updateMatrix();
+      flowers.setMatrixAt(flowerIdx++, dummy.matrix);
+    }
+  });
+  body.instanceMatrix.needsUpdate = true;
+  flowers.instanceMatrix.needsUpdate = true;
+  scene.add(body, flowers);
+}
 
 // Pastos altos: mechones dispersos en primer plano
 const GRASS_COUNT = 400;
