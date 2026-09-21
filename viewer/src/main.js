@@ -798,6 +798,203 @@ for (let w = 0; w < WILLOW_COUNT; w++) {
 willowWhips.instanceMatrix.needsUpdate = true;
 scene.add(willowWhips);
 
+// --- Cortadera (Cortaderia selloana) -------------------------------------
+// El pasto más característico de la pradera pampeana: mata densa de hojas
+// largas y arqueadas, de la que salen varas altas rematadas en un penacho
+// plumoso blanco-plateado. Es la silueta que más "lee" como pampa a
+// distancia, así que se siembra por toda la escena, no solo cerca del agua.
+const PAMPAS_CLUMPS = 26;
+const BLADES_PER_CLUMP = 16;
+const PLUMES_PER_CLUMP = 5;
+
+const pampasPositions = scatterPositions(PAMPAS_CLUMPS, 3.0, 15, 1.4);
+
+// Hoja: lámina muy larga y angosta, con el pivote en la base para que el
+// viento la arquee desde donde nace.
+const bladeGeo = new THREE.ConeGeometry(0.02, 1, 3);
+bladeGeo.translate(0, 0.5, 0);
+const bladeMat = new THREE.MeshStandardMaterial({ color: 0x8a9159, roughness: 1.0, flatShading: true });
+const pampasBlades = new THREE.InstancedMesh(bladeGeo, bladeMat, PAMPAS_CLUMPS * BLADES_PER_CLUMP);
+pampasBlades.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+pampasBlades.castShadow = true;
+
+// Penacho: masa plumosa alargada arriba de la vara. Casi blanco y con algo
+// de emisión para que capte la luz rasante del atardecer, como las plumas
+// reales retroiluminadas.
+const plumeGeo = makeOrganicGeometry(new THREE.IcosahedronGeometry(0.16, 2), 0.45, 133);
+plumeGeo.scale(0.55, 2.3, 0.55);
+const plumeMat = new THREE.MeshStandardMaterial({
+  color: 0xe8e0cf,
+  roughness: 0.75,
+  emissive: 0xb8ac93,
+  emissiveIntensity: 0.18,
+  flatShading: true,
+});
+const pampasPlumes = new THREE.InstancedMesh(plumeGeo, plumeMat, PAMPAS_CLUMPS * PLUMES_PER_CLUMP);
+pampasPlumes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+pampasPlumes.castShadow = true;
+
+// Vara que sostiene el penacho
+const stalkGeo = new THREE.CylinderGeometry(0.012, 0.018, 1, 4);
+stalkGeo.translate(0, 0.5, 0);
+const stalkMat = new THREE.MeshStandardMaterial({ color: 0x9a9060, roughness: 1.0, flatShading: true });
+const pampasStalks = new THREE.InstancedMesh(stalkGeo, stalkMat, PAMPAS_CLUMPS * PLUMES_PER_CLUMP);
+pampasStalks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+const bladeSway = [];
+const plumeSway = [];
+let bladeIdx = 0;
+let plumeIdx = 0;
+
+pampasPositions.forEach(([cx, cz]) => {
+  const clumpScale = 0.85 + rng() * 0.5;
+
+  for (let b = 0; b < BLADES_PER_CLUMP; b++) {
+    const a = rng() * Math.PI * 2;
+    const rad = rng() * 0.22 * clumpScale;
+    const x = cx + Math.cos(a) * rad;
+    const z = cz + Math.sin(a) * rad;
+    const len = (0.8 + rng() * 0.6) * clumpScale;
+    // las hojas se abren hacia afuera en abanico: más inclinadas cuanto
+    // más lejos del centro de la mata
+    const lean = 0.25 + (rad / (0.22 * clumpScale)) * 0.5;
+    const baseRotX = Math.sin(a) * lean;
+    const baseRotZ = -Math.cos(a) * lean;
+    const rotY = rng() * Math.PI * 2;
+    dummy.position.set(x, 0, z);
+    dummy.rotation.set(baseRotX, rotY, baseRotZ);
+    dummy.scale.set(1, len, 1);
+    dummy.updateMatrix();
+    pampasBlades.setMatrixAt(bladeIdx, dummy.matrix);
+    bladeSway.push({ index: bladeIdx, x, z, len, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
+    bladeIdx++;
+  }
+
+  for (let p = 0; p < PLUMES_PER_CLUMP; p++) {
+    const a = rng() * Math.PI * 2;
+    const rad = rng() * 0.16 * clumpScale;
+    const x = cx + Math.cos(a) * rad;
+    const z = cz + Math.sin(a) * rad;
+    const stalkLen = (1.5 + rng() * 0.8) * clumpScale;
+    const baseRotX = (rng() - 0.5) * 0.18;
+    const baseRotZ = (rng() - 0.5) * 0.18;
+
+    dummy.position.set(x, 0, z);
+    dummy.rotation.set(baseRotX, 0, baseRotZ);
+    dummy.scale.set(1, stalkLen, 1);
+    dummy.updateMatrix();
+    pampasStalks.setMatrixAt(plumeIdx, dummy.matrix);
+
+    // el penacho corona la vara, siguiendo su inclinación
+    const plumeY = stalkLen * Math.cos(baseRotX) + 0.22;
+    const plumeX = x - Math.sin(baseRotZ) * stalkLen;
+    const plumeZ = z + Math.sin(baseRotX) * stalkLen;
+    const plumeRotY = rng() * Math.PI * 2;
+    const ps = 0.8 + rng() * 0.45;
+    dummy.position.set(plumeX, plumeY, plumeZ);
+    dummy.rotation.set(baseRotX, plumeRotY, baseRotZ);
+    dummy.scale.set(ps, ps, ps);
+    dummy.updateMatrix();
+    pampasPlumes.setMatrixAt(plumeIdx, dummy.matrix);
+
+    plumeSway.push({
+      index: plumeIdx,
+      stalkX: x,
+      stalkZ: z,
+      stalkLen,
+      plumeX,
+      plumeY,
+      plumeZ,
+      ps,
+      baseRotX,
+      baseRotZ,
+      rotY: plumeRotY,
+      phase: rng() * Math.PI * 2,
+    });
+    plumeIdx++;
+  }
+});
+pampasBlades.instanceMatrix.needsUpdate = true;
+pampasPlumes.instanceMatrix.needsUpdate = true;
+pampasStalks.instanceMatrix.needsUpdate = true;
+scene.add(pampasBlades, pampasPlumes, pampasStalks);
+
+// --- Ombú (Phytolacca dioica) --------------------------------------------
+// El árbol emblema de la pampa. Técnicamente es una hierba gigante, y eso
+// explica su rasgo inconfundible: la base del tronco se ensancha en una
+// masa bulbosa y acanalada mucho más ancha que el fuste. Copa muy amplia y
+// densa: daba la única sombra de la llanura, así que funciona como hito
+// visual de la escena.
+const OMBU_COUNT = 3;
+const ombuTrunkMat = new THREE.MeshStandardMaterial({ color: 0x5b4a38, roughness: 0.95, flatShading: true });
+const ombuLeafMat = new THREE.MeshStandardMaterial({ color: 0x3f5f33, roughness: 0.88, flatShading: true });
+
+const ombuPositions = scatterPositions(OMBU_COUNT, 8, 13, 2.5);
+ombuPositions.forEach(([x, z], i) => {
+  const scale = 1.0 + rng() * 0.35;
+
+  // base bulbosa: varios lóbulos que se funden, no un cono liso
+  const baseLobes = 6;
+  for (let b = 0; b < baseLobes; b++) {
+    const a = (b / baseLobes) * Math.PI * 2;
+    const lobe = new THREE.Mesh(
+      makeOrganicGeometry(new THREE.IcosahedronGeometry(0.55, 2), 0.28, 200 + i * 10 + b),
+      ombuTrunkMat
+    );
+    lobe.position.set(x + Math.cos(a) * 0.42 * scale, 0.34 * scale, z + Math.sin(a) * 0.42 * scale);
+    lobe.scale.set(scale * 0.9, scale * 0.75, scale * 0.9);
+    lobe.castShadow = true;
+    lobe.receiveShadow = true;
+    scene.add(lobe);
+  }
+  const baseCore = new THREE.Mesh(
+    makeOrganicGeometry(new THREE.IcosahedronGeometry(0.8, 2), 0.2, 260 + i),
+    ombuTrunkMat
+  );
+  baseCore.position.set(x, 0.5 * scale, z);
+  baseCore.scale.set(scale, scale * 0.85, scale);
+  baseCore.castShadow = true;
+  scene.add(baseCore);
+
+  // fuste corto y grueso que sale del bulbo
+  const trunkH = 1.7 * scale;
+  const ombuTrunkGeo = new THREE.CylinderGeometry(0.3 * scale, 0.55 * scale, trunkH, 9);
+  ombuTrunkGeo.translate(0, trunkH / 2, 0);
+  const ombuTrunk = new THREE.Mesh(ombuTrunkGeo, ombuTrunkMat);
+  ombuTrunk.position.set(x, 0.75 * scale, z);
+  ombuTrunk.castShadow = true;
+  scene.add(ombuTrunk);
+
+  // copa ancha y baja, hecha de varios lóbulos de follaje
+  const crownY = 0.75 * scale + trunkH;
+  const crownLobes = 7;
+  for (let c = 0; c < crownLobes; c++) {
+    const a = (c / crownLobes) * Math.PI * 2 + rng() * 0.4;
+    const rad = (0.9 + rng() * 0.7) * scale;
+    const lobe = new THREE.Mesh(
+      makeOrganicGeometry(new THREE.IcosahedronGeometry(1, 2), 0.3, 300 + i * 10 + c),
+      ombuLeafMat
+    );
+    lobe.position.set(
+      x + Math.cos(a) * rad,
+      crownY + (rng() - 0.35) * 0.5 * scale,
+      z + Math.sin(a) * rad
+    );
+    const ls = (0.95 + rng() * 0.5) * scale;
+    lobe.scale.set(ls, ls * 0.62, ls);
+    lobe.castShadow = true;
+    scene.add(lobe);
+  }
+  const crownCore = new THREE.Mesh(
+    makeOrganicGeometry(new THREE.IcosahedronGeometry(1, 2), 0.25, 360 + i),
+    ombuLeafMat
+  );
+  crownCore.position.set(x, crownY + 0.25 * scale, z);
+  crownCore.scale.set(1.5 * scale, 0.85 * scale, 1.5 * scale);
+  crownCore.castShadow = true;
+  scene.add(crownCore);
+});
+
 // --- Fauna nativa: carpinchos junto a la laguna + bandada de aves --------
 // Sin locomoción por pedido explícito: la fauna es lo que se mueve/anima
 // en la escena, no la cámara. Geometría procedimental (mismo criterio que
@@ -984,6 +1181,177 @@ butterflyHomes.forEach(([hx, hz]) => {
   butterflies.push(bfly);
 });
 
+// --- Ñandú (Rhea americana) ----------------------------------------------
+// El ave emblemática de la pampa y pieza clave de la vida charrúa: se lo
+// cazaba con boleadoras, y se aprovechaba carne, plumas, cuero y huevos.
+// No vuela, así que camina y pastorea por la pradera abierta — nunca cerca
+// del agua como el carpincho. Silueta: cuerpo grande y ovalado, cuello
+// largo y flexible, patas altas de tres dedos, plumaje gris pardo.
+const rheaBodyMat = new THREE.MeshStandardMaterial({ color: 0x8d8271, roughness: 0.95, flatShading: true });
+const rheaDarkMat = new THREE.MeshStandardMaterial({ color: 0x5a5245, roughness: 0.95, flatShading: true });
+const rheaLegMat = new THREE.MeshStandardMaterial({ color: 0x6b6355, roughness: 0.9, flatShading: true });
+
+function makeRhea() {
+  const group = new THREE.Group();
+
+  // cuerpo voluminoso y redondeado, con plumas colgantes (el ñandú no tiene
+  // cola: el plumaje del dorso cae sobre la grupa)
+  const body = new THREE.Mesh(makeOrganicGeometry(new THREE.IcosahedronGeometry(0.42, 2), 0.18, 411), rheaBodyMat);
+  body.position.set(0, 0.95, 0);
+  body.scale.set(1.25, 0.95, 0.95);
+  body.castShadow = true;
+  group.add(body);
+
+  // el cuello va en su propio sub-grupo para poder animar el pastoreo
+  const neckPivot = new THREE.Group();
+  neckPivot.position.set(0.34, 1.12, 0);
+  group.add(neckPivot);
+
+  const neckGeo = new THREE.CylinderGeometry(0.055, 0.085, 0.72, 7);
+  neckGeo.translate(0, 0.36, 0);
+  const neck = new THREE.Mesh(neckGeo, rheaBodyMat);
+  neck.rotation.z = -0.25;
+  neck.castShadow = true;
+  neckPivot.add(neck);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), rheaBodyMat);
+  head.position.set(0.19, 0.71, 0);
+  head.scale.set(1.3, 0.9, 0.9);
+  neckPivot.add(head);
+
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 6), rheaDarkMat);
+  beak.rotation.z = -Math.PI / 2;
+  beak.position.set(0.31, 0.69, 0);
+  neckPivot.add(beak);
+
+  group.userData.neck = neckPivot;
+
+  // patas largas: muslo + caña, bien altas, típicas de ave corredora
+  const legs = [];
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Group();
+    const thighGeo = new THREE.CylinderGeometry(0.05, 0.038, 0.45, 6);
+    thighGeo.translate(0, -0.225, 0);
+    const thigh = new THREE.Mesh(thighGeo, rheaLegMat);
+    thigh.castShadow = true;
+    leg.add(thigh);
+
+    const shinGeo = new THREE.CylinderGeometry(0.028, 0.024, 0.48, 6);
+    shinGeo.translate(0, -0.24, 0);
+    const shin = new THREE.Mesh(shinGeo, rheaLegMat);
+    shin.position.y = -0.45;
+    leg.add(shin);
+
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.035, 0.09), rheaDarkMat);
+    foot.position.set(0.03, -0.92, 0);
+    leg.add(foot);
+
+    leg.position.set(-0.03, 0.78, side * 0.13);
+    group.add(leg);
+    legs.push(leg);
+  }
+  group.userData.legs = legs;
+
+  return group;
+}
+
+const RHEA_COUNT = 3;
+const rheas = [];
+// lejos del agua y de los marcadores: pastorean en la llanura abierta
+const rheaPositions = scatterPositions(RHEA_COUNT, 6, 12, 3.0);
+rheaPositions.forEach(([x, z]) => {
+  const rhea = makeRhea();
+  rhea.position.set(x, 0, z);
+  rhea.rotation.y = rng() * Math.PI * 2;
+  rhea.userData.grazePhase = rng() * Math.PI * 2;
+  rhea.userData.grazeSpeed = 0.25 + rng() * 0.2;
+  rhea.userData.stepPhase = rng() * Math.PI * 2;
+  scene.add(rhea);
+  rheas.push(rhea);
+});
+
+// --- Tero (Vanellus chilensis) -------------------------------------------
+// El ave más característica del campo uruguayo: anda a pie por el pasto
+// corto, blanco y gris con la pechera negra, copete fino en la nuca y patas
+// rojas. Su grito de alarma "tero-tero" se sintetiza más abajo, junto al
+// resto del ambiente.
+const teroBodyMat = new THREE.MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.9, flatShading: true });
+const teroWhiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.9, flatShading: true });
+const teroBlackMat = new THREE.MeshStandardMaterial({ color: 0x25272a, roughness: 0.85, flatShading: true });
+const teroLegMat = new THREE.MeshStandardMaterial({ color: 0xa8342c, roughness: 0.8, flatShading: true });
+
+function makeTero() {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 9), teroBodyMat);
+  body.position.y = 0.16;
+  body.scale.set(1.5, 1, 1);
+  body.castShadow = true;
+  group.add(body);
+
+  // pechera negra: el rasgo que lo distingue de cualquier otra ave del campo
+  const breast = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), teroBlackMat);
+  breast.position.set(0.06, 0.155, 0);
+  breast.scale.set(1.1, 1.05, 0.95);
+  group.add(breast);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.048, 10, 8), teroWhiteMat);
+  head.position.set(0.13, 0.25, 0);
+  group.add(head);
+
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), teroBlackMat);
+  face.position.set(0.16, 0.235, 0);
+  face.scale.set(1.1, 0.9, 0.8);
+  group.add(face);
+
+  // copete: penacho fino que le sale de la nuca hacia atrás
+  const crest = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.09, 4), teroBlackMat);
+  crest.rotation.z = Math.PI / 2 + 0.35;
+  crest.position.set(0.08, 0.28, 0);
+  group.add(crest);
+
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.045, 6), teroBlackMat);
+  beak.rotation.z = -Math.PI / 2;
+  beak.position.set(0.19, 0.24, 0);
+  group.add(beak);
+
+  // cola oscura con banda blanca en la base, como la del tero real
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.038, 0.07, 4), teroBlackMat);
+  tail.rotation.z = Math.PI / 2;
+  tail.position.set(-0.125, 0.165, 0);
+  tail.scale.set(1, 0.35, 1.15);
+  group.add(tail);
+
+  const tailBand = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.025, 4), teroWhiteMat);
+  tailBand.rotation.z = Math.PI / 2;
+  tailBand.position.set(-0.086, 0.166, 0);
+  tailBand.scale.set(1, 0.36, 1.15);
+  group.add(tailBand);
+
+  for (const side of [-1, 1]) {
+    const legGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.14, 5);
+    legGeo.translate(0, -0.07, 0);
+    const leg = new THREE.Mesh(legGeo, teroLegMat);
+    leg.position.set(0, 0.14, side * 0.035);
+    group.add(leg);
+  }
+
+  return group;
+}
+
+const TERO_COUNT = 5;
+const teros = [];
+const teroPositions = scatterPositions(TERO_COUNT, 3.5, 11, 1.6);
+teroPositions.forEach(([x, z]) => {
+  const tero = makeTero();
+  tero.position.set(x, 0, z);
+  tero.rotation.y = rng() * Math.PI * 2;
+  tero.userData.peckPhase = rng() * Math.PI * 2;
+  tero.userData.peckSpeed = 0.5 + rng() * 0.4;
+  scene.add(tero);
+  teros.push(tero);
+});
+
 // --- Sonido ambiente: viento + cantos de aves + carpincho -----------------
 // Sintetizado con Web Audio API (osciladores + ruido filtrado), sin bajar
 // clips externos: evita temas de licencia y peso, y se ajusta exacto a la
@@ -1070,9 +1438,44 @@ function playCapybaraGrunt(ctx) {
   osc.stop(now + 0.45);
 }
 
+// Grito del tero: la alarma más reconocible del campo uruguayo. Son sílabas
+// cortas, muy agudas y metálicas, repetidas en ráfaga ("tero-tero-tero"),
+// cada una con un golpe de ataque seco y una caída rápida de tono.
+function playTeroCall(ctx) {
+  const now = ctx.currentTime;
+  const syllables = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < syllables; i++) {
+    const t0 = now + i * 0.17;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth"; // más armónicos que una sinusoide: suena metálico
+    const f0 = 1900 + Math.random() * 300;
+    osc.frequency.setValueAtTime(f0, t0);
+    osc.frequency.exponentialRampToValueAtTime(f0 * 0.62, t0 + 0.11);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 2300;
+    filter.Q.value = 3.5;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.07, t0 + 0.006); // ataque seco
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.13);
+
+    osc.connect(filter);
+    filter.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.15);
+  }
+}
+
 function scheduleWildlifeSounds(ctx) {
   const tick = () => {
-    if (Math.random() < 0.7) playBirdChirp(ctx);
+    const r = Math.random();
+    if (r < 0.45) playBirdChirp(ctx);
+    else if (r < 0.8) playTeroCall(ctx);
     else playCapybaraGrunt(ctx);
     setTimeout(tick, 1800 + Math.random() * 3500);
   };
@@ -1319,6 +1722,24 @@ renderer.setAnimationLoop((time) => {
     capy.position.y = 0.01 + 0.01 * Math.sin(t * 0.8 + capy.userData.bobOffset);
   }
 
+  // Ñandú pastoreando: baja el cuello al pasto, lo sube a vigilar. El ciclo
+  // pasa más tiempo abajo que arriba, como el animal real.
+  for (const rhea of rheas) {
+    const { neck, grazePhase, grazeSpeed, stepPhase } = rhea.userData;
+    const cycle = Math.sin(t * grazeSpeed + grazePhase);
+    neck.rotation.z = 0.75 + 0.75 * Math.max(0, cycle); // 0 = erguido, ~1.5 rad = cabeza al suelo
+    rhea.position.y = 0.012 * Math.sin(t * 1.4 + stepPhase);
+    // peso que cambia de pata, sutil
+    rhea.rotation.z = 0.02 * Math.sin(t * 0.9 + stepPhase);
+  }
+
+  // Tero picoteando el pasto corto, con pausas de alerta
+  for (const tero of teros) {
+    const { peckPhase, peckSpeed } = tero.userData;
+    const c = Math.sin(t * peckSpeed + peckPhase);
+    tero.rotation.z = Math.max(0, c - 0.45) * 0.9; // solo picotea en el pico del ciclo
+  }
+
   for (const bfly of butterflies) {
     const { homeX, homeZ, homeY, radius, speed, phase, vertPhase, flapSpeed } = bfly.userData;
     const angle = t * speed + phase;
@@ -1393,6 +1814,43 @@ renderer.setAnimationLoop((time) => {
     willowWhips.setMatrixAt(wp.index, dummy.matrix);
   }
   willowWhips.instanceMatrix.needsUpdate = true;
+
+  // Cortadera: las hojas se arquean y las varas con penacho cabecean. Es lo
+  // que da la lectura de "campo con viento" a media distancia.
+  for (const bl of bladeSway) {
+    const sway = Math.sin(t * 1.15 + bl.phase) * 0.17 + Math.sin(t * 2.5 + bl.phase * 1.6) * 0.06;
+    dummy.position.set(bl.x, 0, bl.z);
+    dummy.rotation.set(bl.baseRotX + sway, bl.rotY, bl.baseRotZ + sway * 0.7);
+    dummy.scale.set(1, bl.len, 1);
+    dummy.updateMatrix();
+    pampasBlades.setMatrixAt(bl.index, dummy.matrix);
+  }
+  pampasBlades.instanceMatrix.needsUpdate = true;
+
+  for (const pl of plumeSway) {
+    const sway = Math.sin(t * 0.95 + pl.phase) * 0.12 + Math.sin(t * 2.1 + pl.phase * 1.3) * 0.045;
+    const rotX = pl.baseRotX + sway;
+    const rotZ = pl.baseRotZ + sway * 0.7;
+
+    dummy.position.set(pl.stalkX, 0, pl.stalkZ);
+    dummy.rotation.set(rotX, 0, rotZ);
+    dummy.scale.set(1, pl.stalkLen, 1);
+    dummy.updateMatrix();
+    pampasStalks.setMatrixAt(pl.index, dummy.matrix);
+
+    // el penacho viaja con la punta de la vara, no se queda flotando
+    dummy.position.set(
+      pl.stalkX - Math.sin(rotZ) * pl.stalkLen,
+      pl.stalkLen * Math.cos(rotX) + 0.22,
+      pl.stalkZ + Math.sin(rotX) * pl.stalkLen
+    );
+    dummy.rotation.set(rotX, pl.rotY, rotZ);
+    dummy.scale.set(pl.ps, pl.ps, pl.ps);
+    dummy.updateMatrix();
+    pampasPlumes.setMatrixAt(pl.index, dummy.matrix);
+  }
+  pampasStalks.instanceMatrix.needsUpdate = true;
+  pampasPlumes.instanceMatrix.needsUpdate = true;
 
   for (let i = 0; i < treeCanopySway.length; i++) {
     const c = treeCanopySway[i];

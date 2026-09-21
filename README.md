@@ -49,6 +49,15 @@ La escena incluye fauna procedimental (mismo criterio que la vegetación — sin
 - **Capibara con más definición**: hocico rectangular achatado + fosas nasales (rasgo distintivo real del capibara, ausente en el modelo anterior) y más segmentos en cuerpo/cabeza/orejas.
 - **Aves con cola**: se agregó una cola en abanico, visible tanto en vuelo como si se posaran, para leer mejor la silueta a distancia.
 
+### Especies emblemáticas de la pampa
+
+Incorporadas a partir de una lista de referencia de modelos 3D comerciales, pero **modeladas procedimentalmente**: los modelos enlazados no eran utilizables (Sketchfab exige login para descargar, ArtStation Marketplace es de pago, y los escaneos "ultra HQ" con texturas 16K pesan cientos de MB, inviables para WebXR en un visor autónomo). Lo aprovechable era la selección de especies:
+
+- **Cortadera** (*Cortaderia selloana*) — matas de hojas largas arqueadas en abanico y varas altas con penacho plumoso blanco-plateado. Es la silueta que más "lee" como pampa a media distancia. El penacho viaja con la punta de la vara al balancearse, no flota suelto.
+- **Ombú** (*Phytolacca dioica*) — el árbol emblema de la llanura. Técnicamente es una hierba gigante, y eso explica su rasgo inconfundible: la base se ensancha en una masa bulbosa y acanalada mucho más ancha que el fuste. Modelado con lóbulos fundidos, no un cono liso.
+- **Ñandú** (*Rhea americana*) — pieza clave de la vida charrúa: se lo cazaba con boleadoras y se aprovechaba carne, plumas, cuero y huevos. Pastorea en la llanura abierta (nunca junto al agua, a diferencia del carpincho), bajando y subiendo el cuello en un ciclo que pasa más tiempo abajo que arriba, como el animal real.
+- **Tero** (*Vanellus chilensis*) — el ave más característica del campo uruguayo: pechera negra, copete fino en la nuca, patas rojas, cola oscura con banda blanca. Picotea el pasto con pausas de alerta, y su grito de alarma "tero-tero" está sintetizado como ráfaga de sílabas agudas y metálicas (onda diente de sierra + pasabanda, ataque seco), integrado al ambiente sonoro.
+
 ### Laguna con referencia fotográfica
 
 La laguna se rehízo a partir de una foto real de un arroyo/laguna uruguaya, corrigiendo lo que la delataba como sintética:
