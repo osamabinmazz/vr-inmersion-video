@@ -85,6 +85,138 @@ const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.receiveShadow = true;
 scene.add(ground);
 
+// --- Vegetación nativa: árboles y arbustos (espinillo/algarrobo) ----------
+// Generados procedimentalmente (bajo poly, InstancedMesh) en vez de bajar
+// modelos de asset packs: da buen rendimiento en VR y una silueta más fiel
+// al monte nativo/espinillar de la pampa que las especies genéricas
+// (pinos, abetos) de las librerías 3D gratuitas disponibles.
+function mulberry32(seed) {
+  return function () {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(20260921);
+
+const POI_KEEP_OUT = [
+  [-2.5, -3],
+  [0, -4.5],
+  [2.5, -3],
+].map(([x, z]) => new THREE.Vector2(x, z));
+
+function farFromPOI(x, z, minDist) {
+  const p = new THREE.Vector2(x, z);
+  return POI_KEEP_OUT.every((k) => k.distanceTo(p) > minDist);
+}
+
+function scatterPositions(count, rMin, rMax, minDistFromPOI) {
+  const points = [];
+  let attempts = 0;
+  while (points.length < count && attempts < count * 30) {
+    attempts++;
+    const angle = rng() * Math.PI * 2;
+    const r = rMin + rng() * (rMax - rMin);
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    if (farFromPOI(x, z, minDistFromPOI)) points.push([x, z]);
+  }
+  return points;
+}
+
+const dummy = new THREE.Object3D();
+
+// Árboles: tronco + copa irregular (silueta tipo espinillo/algarrobo)
+const TREE_COUNT = 55;
+const treePositions = scatterPositions(TREE_COUNT, 4.5, 17, 1.4);
+
+const trunkGeo = new THREE.CylinderGeometry(0.05, 0.11, 1.6, 6);
+trunkGeo.translate(0, 0.8, 0);
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3b2a, roughness: 0.9, flatShading: true });
+const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
+trunks.castShadow = true;
+
+const canopyGeo = new THREE.IcosahedronGeometry(0.55, 1);
+const canopyMat = new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true });
+const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
+canopies.castShadow = true;
+
+const espinilloGreen = new THREE.Color(0x7a8f4a);
+const algarroboGreen = new THREE.Color(0x4f6b3a);
+const tmpColor = new THREE.Color();
+
+treePositions.forEach(([x, z], i) => {
+  // Escala UNIFORME del tronco (no desacoplar alto/ancho): así se mantiene
+  // la proporción tronco-grueso/copa-baja típica del espinillo/algarrobo
+  // en vez de troncos finos y altísimos ("efecto palillo").
+  const treeScale = 0.75 + rng() * 0.45; // tronco final: ~1.2 a ~2.3m
+  const trunkTopY = 1.6 * treeScale;
+
+  dummy.position.set(x, 0, z);
+  dummy.rotation.y = rng() * Math.PI * 2;
+  dummy.scale.set(treeScale, treeScale, treeScale);
+  dummy.updateMatrix();
+  trunks.setMatrixAt(i, dummy.matrix);
+
+  dummy.position.set(x, trunkTopY - 0.08, z);
+  dummy.rotation.set(rng() * 0.25, rng() * Math.PI * 2, rng() * 0.25);
+  dummy.scale.set(
+    treeScale * (1.1 + rng() * 0.6),
+    treeScale * (0.6 + rng() * 0.3), // copa achatada, típica del espinillo
+    treeScale * (1.1 + rng() * 0.6)
+  );
+  dummy.updateMatrix();
+  canopies.setMatrixAt(i, dummy.matrix);
+
+  tmpColor.lerpColors(espinilloGreen, algarroboGreen, rng());
+  canopies.setColorAt(i, tmpColor);
+});
+trunks.instanceMatrix.needsUpdate = true;
+canopies.instanceMatrix.needsUpdate = true;
+canopies.instanceColor.needsUpdate = true;
+scene.add(trunks, canopies);
+
+// Arbustos bajos, más cerca de la zona transitable
+const SHRUB_COUNT = 90;
+const shrubPositions = scatterPositions(SHRUB_COUNT, 1.8, 9, 1.0);
+const shrubGeo = new THREE.IcosahedronGeometry(0.3, 0);
+const shrubMat = new THREE.MeshStandardMaterial({ color: 0x8a8a4a, roughness: 0.95, flatShading: true });
+const shrubs = new THREE.InstancedMesh(shrubGeo, shrubMat, shrubPositions.length);
+shrubs.castShadow = true;
+shrubs.receiveShadow = true;
+
+shrubPositions.forEach(([x, z], i) => {
+  const s = 0.4 + rng() * 0.6;
+  dummy.position.set(x, s * 0.3, z);
+  dummy.rotation.set(0, rng() * Math.PI * 2, 0);
+  dummy.scale.set(s, s * (0.6 + rng() * 0.3), s);
+  dummy.updateMatrix();
+  shrubs.setMatrixAt(i, dummy.matrix);
+});
+shrubs.instanceMatrix.needsUpdate = true;
+scene.add(shrubs);
+
+// Pastos altos: mechones dispersos en primer plano
+const GRASS_COUNT = 400;
+const grassPositions = scatterPositions(GRASS_COUNT, 1.2, 14, 0.6);
+const grassGeo = new THREE.ConeGeometry(0.025, 0.5, 3);
+grassGeo.translate(0, 0.25, 0);
+const grassMat = new THREE.MeshStandardMaterial({ color: 0x9a9a52, roughness: 1.0, flatShading: true });
+const grassTufts = new THREE.InstancedMesh(grassGeo, grassMat, grassPositions.length);
+
+grassPositions.forEach(([x, z], i) => {
+  const s = 0.6 + rng() * 0.8;
+  dummy.position.set(x, 0, z);
+  dummy.rotation.set((rng() - 0.5) * 0.3, rng() * Math.PI * 2, (rng() - 0.5) * 0.3);
+  dummy.scale.set(1, s, 1);
+  dummy.updateMatrix();
+  grassTufts.setMatrixAt(i, dummy.matrix);
+});
+grassTufts.instanceMatrix.needsUpdate = true;
+scene.add(grassTufts);
+
 // --- Camera rig -------------------------------------------------------
 const cameraRig = new THREE.Group();
 scene.add(cameraRig);
