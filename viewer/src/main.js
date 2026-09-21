@@ -242,17 +242,104 @@ scene.add(trunks, canopies);
 // cada una con geometría propia + color de flor botánicamente fiel.
 // (Aromo/Espinillo — Acacia caven — ya está representado como árbol más
 // arriba, no se duplica acá.)
+//
+// Detalle "casi fotográfico": en vez del poliedro plano de pocas caras,
+// cada especie usa una malla de ~1000+ triángulos (icosaedro muy
+// subdividido), deformada con ruido para romper la simetría perfecta
+// (forma de "gema") y lograr un contorno orgánico de follaje real, con
+// sombreado suave (no flatShading) + textura de color moteado y bump de
+// hojas generados por canvas (sin descargar assets pesados — un modelo
+// fotogramétrico real pesa ~95MB por arbusto, inviable para VR).
+function hashNoise3(x, y, z) {
+  const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+function makeOrganicGeometry(geo, amount, seed) {
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const n = hashNoise3(v.x * 4 + seed, v.y * 4 + seed, v.z * 4 + seed);
+    v.multiplyScalar(1 + (n - 0.5) * amount);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeFoliageMap(baseHex) {
+  // OJO: THREE.Color.r/g/b devuelve componentes en espacio LINEAR (con
+  // color management, activo por defecto desde r152), no sRGB. Escribirlos
+  // directo como bytes en un canvas los oscurece muchísimo (casi negro).
+  // Por eso acá se extrae el RGB directo del entero hex, sin pasar por
+  // THREE.Color.
+  const br = (baseHex >> 16) & 255;
+  const bg = (baseHex >> 8) & 255;
+  const bb = baseHex & 255;
+
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = `rgb(${br},${bg},${bb})`;
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 260; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 3 + Math.random() * 9;
+    const shade = 0.55 + Math.random() * 0.75;
+    const cr = Math.min(255, Math.round(br * shade));
+    const cg = Math.min(255, Math.round(bg * shade));
+    const cb = Math.min(255, Math.round(bb * shade));
+    ctx.fillStyle = `rgba(${cr},${cg},${cb},0.55)`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * (0.5 + Math.random() * 0.5), Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function makeFoliageBumpMap() {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgb(128,128,255)";
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 500; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 2 + Math.random() * 6;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, "rgba(160,160,255,0.6)");
+    grad.addColorStop(1, "rgba(128,128,255,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  return tex;
+}
+
 const SHRUB_SPECIES = [
   // Pata de vaca (Bauhinia forficata): flor blanca en forma de mariposa
-  { name: "pata de vaca", geo: () => new THREE.IcosahedronGeometry(0.34, 1), foliage: 0x5a7a4a, flower: 0xfbfaf5, roughness: 0.85, count: 22 },
+  { name: "pata de vaca", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.34, 3), 0.35, 11), foliage: 0x5a7a4a, flower: 0xfbfaf5, roughness: 0.85, count: 22 },
   // Carqueja (Baccharis trimera): subarbusto rústico, tallos aplanados/angulosos
-  { name: "carqueja", geo: () => new THREE.TetrahedronGeometry(0.3, 1), foliage: 0x8a9a5a, flower: 0xd9d18a, roughness: 0.95, count: 24 },
+  { name: "carqueja", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.45, 23), foliage: 0x8a9a5a, flower: 0xd9d18a, roughness: 0.95, count: 24 },
   // Malva sonrojada (Calyculogygas uruguayensis): flores rojas vistosas, especie prioritaria
-  { name: "malva sonrojada", geo: () => new THREE.DodecahedronGeometry(0.3, 0), foliage: 0x6a8a4a, flower: 0xe0354f, roughness: 0.9, count: 20 },
+  { name: "malva sonrojada", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.3, 37), foliage: 0x6a8a4a, flower: 0xe0354f, roughness: 0.9, count: 20 },
   // Chilca (Baccharis salicifolia): monte ribereño, atrae polinizadores
-  { name: "chilca", geo: () => new THREE.OctahedronGeometry(0.36, 1), foliage: 0x4f6b3a, flower: 0xf0ece0, roughness: 0.9, count: 24 },
+  { name: "chilca", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.36, 3), 0.32, 53), foliage: 0x4f6b3a, flower: 0xf0ece0, roughness: 0.9, count: 24 },
   // Espina amarilla (Berberis laurina): follaje brillante, flor amarilla llamativa
-  { name: "espina amarilla", geo: () => new THREE.IcosahedronGeometry(0.3, 0), foliage: 0x3f6b3f, flower: 0xffd400, roughness: 0.35, count: 20 },
+  { name: "espina amarilla", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.4, 71), foliage: 0x3f6b3f, flower: 0xffd400, roughness: 0.35, count: 20 },
 ];
 
 const flowerGeo = new THREE.IcosahedronGeometry(0.045, 0);
@@ -261,7 +348,13 @@ const FLOWERS_PER_SHRUB = 3;
 for (const species of SHRUB_SPECIES) {
   const positions = scatterPositions(species.count, 1.8, 9.5, 1.0);
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: species.foliage, roughness: species.roughness ?? 0.9, flatShading: true });
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: species.foliage,
+    map: makeFoliageMap(species.foliage),
+    normalMap: makeFoliageBumpMap(),
+    normalScale: new THREE.Vector2(0.7, 0.7),
+    roughness: species.roughness ?? 0.9,
+  });
   const body = new THREE.InstancedMesh(species.geo(), bodyMat, positions.length);
   body.castShadow = true;
   body.receiveShadow = true;
