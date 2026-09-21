@@ -361,27 +361,118 @@ function makeFoliageBumpMap() {
   return tex;
 }
 
+// Hojas individuales reconocibles por especie: en vez de que la identidad
+// de cada arbusto dependa solo del color, cada una tiene una silueta de
+// hoja propia (contorno 2D real, no una malla genérica) instanciada muchas
+// veces sobre el volumen de follaje — bilobulada (pata de vaca), lámina
+// delgada tipo tallo aplanado (carqueja, casi sin hoja verdadera), redondeada
+// palmada (malva sonrojada), lanceolada alargada (chilca, "salicifolia" =
+// hoja de sauce) u ovalada con borde aserrado (espina amarilla, follaje
+// tipo laurel con espinas).
+function makeLeafGeometry(radiusFn, segments, sizeX, sizeY) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i <= segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    const r = radiusFn(a);
+    const x = Math.cos(a) * r * sizeX;
+    const y = Math.sin(a) * r * sizeY;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  const geo = new THREE.ShapeGeometry(shape, 1);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function bilobedRadius(a) {
+  const d = a > Math.PI ? a - Math.PI * 2 : a; // distancia angular al notch en a=0
+  const notch = 0.6 * Math.exp(-(d * d) / 0.05);
+  return Math.max(0.35, 1 - notch);
+}
+function ellipseRadius() {
+  return 1; // el contorno lo da el aspect ratio sizeX/sizeY, no la función
+}
+function palmateRadius(a) {
+  return 1 + 0.14 * Math.cos(a * 5); // 5 lóbulos suaves, tipo hoja de malva
+}
+function serratedOvalRadius(a) {
+  return 1 + 0.07 * Math.sin(a * 16); // borde con pequeñas espinas/dientes
+}
+
 const SHRUB_SPECIES = [
-  // Pata de vaca (Bauhinia forficata): flor blanca en forma de mariposa
-  { name: "pata de vaca", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.34, 3), 0.35, 11), foliage: 0x5a7a4a, flower: 0xfbfaf5, roughness: 0.85, count: 22 },
-  // Carqueja (Baccharis trimera): subarbusto rústico, tallos aplanados/angulosos
-  { name: "carqueja", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.45, 23), foliage: 0x8a9a5a, flower: 0xd9d18a, roughness: 0.95, count: 24 },
-  // Malva sonrojada (Calyculogygas uruguayensis): flores rojas vistosas, especie prioritaria
-  { name: "malva sonrojada", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.3, 37), foliage: 0x6a8a4a, flower: 0xe0354f, roughness: 0.9, count: 20 },
-  // Chilca (Baccharis salicifolia): monte ribereño, atrae polinizadores
-  { name: "chilca", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.36, 3), 0.32, 53), foliage: 0x4f6b3a, flower: 0xf0ece0, roughness: 0.9, count: 24 },
-  // Espina amarilla (Berberis laurina): follaje brillante, flor amarilla llamativa
-  { name: "espina amarilla", geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.4, 71), foliage: 0x3f6b3f, flower: 0xffd400, roughness: 0.35, count: 20 },
+  // Pata de vaca (Bauhinia forficata): flor blanca en forma de mariposa,
+  // hoja bilobulada característica (silueta de pata de vaca/mariposa)
+  {
+    name: "pata de vaca",
+    geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.34, 3), 0.35, 11),
+    blobRadius: 0.34,
+    foliage: 0x5a7a4a,
+    flower: 0xfbfaf5,
+    roughness: 0.85,
+    count: 22,
+    leaf: { radiusFn: bilobedRadius, segments: 24, sizeX: 0.075, sizeY: 0.068, count: 11, uprightBias: 0.3 },
+  },
+  // Carqueja (Baccharis trimera): subarbusto rústico, tallos aplanados y
+  // angulosos, casi sin hojas verdaderas — se representa como muchas
+  // láminas delgadas erguidas en vez de hojas anchas.
+  {
+    name: "carqueja",
+    geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.45, 23),
+    blobRadius: 0.3,
+    foliage: 0x8a9a5a,
+    flower: 0xd9d18a,
+    roughness: 0.95,
+    count: 24,
+    leaf: { radiusFn: ellipseRadius, segments: 16, sizeX: 0.08, sizeY: 0.009, count: 22, uprightBias: 0.85 },
+  },
+  // Malva sonrojada (Calyculogygas uruguayensis): flores rojas vistosas,
+  // especie prioritaria — hoja redondeada palmada típica de las malváceas
+  {
+    name: "malva sonrojada",
+    geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.3, 37),
+    blobRadius: 0.3,
+    foliage: 0x6a8a4a,
+    flower: 0xe0354f,
+    roughness: 0.9,
+    count: 20,
+    leaf: { radiusFn: palmateRadius, segments: 22, sizeX: 0.068, sizeY: 0.063, count: 10, uprightBias: 0.25 },
+  },
+  // Chilca (Baccharis salicifolia — "hoja de sauce"): monte ribereño, atrae
+  // polinizadores — hoja lanceolada larga y angosta, apuntada en los extremos
+  {
+    name: "chilca",
+    geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.36, 3), 0.32, 53),
+    blobRadius: 0.36,
+    foliage: 0x4f6b3a,
+    flower: 0xf0ece0,
+    roughness: 0.9,
+    count: 24,
+    leaf: { radiusFn: ellipseRadius, segments: 18, sizeX: 0.1, sizeY: 0.02, count: 13, uprightBias: 0.4 },
+  },
+  // Espina amarilla (Berberis laurina — "hoja de laurel"): follaje brillante,
+  // flor amarilla llamativa — hoja ovalada con borde finamente aserrado/espinoso
+  {
+    name: "espina amarilla",
+    geo: () => makeOrganicGeometry(new THREE.IcosahedronGeometry(0.3, 3), 0.4, 71),
+    blobRadius: 0.3,
+    foliage: 0x3f6b3f,
+    flower: 0xffd400,
+    roughness: 0.35,
+    count: 20,
+    leaf: { radiusFn: serratedOvalRadius, segments: 24, sizeX: 0.052, sizeY: 0.03, count: 15, uprightBias: 0.2 },
+  },
 ];
 
 const flowerGeo = new THREE.IcosahedronGeometry(0.045, 0);
 const FLOWERS_PER_SHRUB = 3;
 
 // Igual que con las copas de los árboles: se guarda la transformación base
-// de cada arbusto para poder recomponerla con un balanceo leve por viento
-// en el render loop (más sutil que el de los árboles, menos que el pasto).
+// de cada arbusto (y de cada hoja individual) para poder recomponerla con
+// un balanceo leve por viento en el render loop.
 const shrubSway = [];
 const shrubBodyMeshes = [];
+const leafSway = [];
+const leafMeshes = [];
 
 for (const species of SHRUB_SPECIES) {
   const positions = scatterPositions(species.count, 1.8, 9.5, 1.0);
@@ -408,7 +499,31 @@ for (const species of SHRUB_SPECIES) {
   });
   const flowers = new THREE.InstancedMesh(flowerGeo, flowerMat, positions.length * FLOWERS_PER_SHRUB);
 
+  // Hojas de silueta reconocible: instanciadas sobre la superficie del
+  // volumen de follaje (blobRadius), orientadas hacia afuera con un
+  // sesgo "erguido" propio de cada especie (uprightBias — alto en
+  // carqueja, cuyos tallos aplanados crecen casi verticales).
+  const leafCfg = species.leaf;
+  const leafGeo = makeLeafGeometry(leafCfg.radiusFn, leafCfg.segments, leafCfg.sizeX, leafCfg.sizeY);
+  // Un poco más clara y saturada que el follaje base: así la silueta de
+  // hoja individual se lee por contraste contra el "blob" de fondo, en vez
+  // de perderse mezclada con la textura moteada de la mesa base.
+  const leafBaseColor = new THREE.Color(species.foliage);
+  const leafHsl = { h: 0, s: 0, l: 0 };
+  leafBaseColor.getHSL(leafHsl);
+  leafBaseColor.setHSL(leafHsl.h, Math.min(1, leafHsl.s * 1.25), Math.min(0.85, leafHsl.l * 1.35));
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: leafBaseColor,
+    roughness: (species.roughness ?? 0.9) * 0.7,
+    side: THREE.DoubleSide,
+  });
+  const leaves = new THREE.InstancedMesh(leafGeo, leafMat, positions.length * leafCfg.count);
+  leaves.castShadow = true;
+  leaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  leafMeshes.push(leaves);
+
   let flowerIdx = 0;
+  let leafIdx = 0;
   positions.forEach(([x, z], i) => {
     const s = 0.6 + rng() * 0.6;
     const h = s * 0.35;
@@ -433,10 +548,33 @@ for (const species of SHRUB_SPECIES) {
       dummy.updateMatrix();
       flowers.setMatrixAt(flowerIdx++, dummy.matrix);
     }
+
+    const blobR = s * species.blobRadius;
+    for (let l = 0; l < leafCfg.count; l++) {
+      const theta = rng() * Math.PI * 2;
+      const phi = Math.acos(2 * rng() - 1); // punto uniforme sobre la esfera
+      const lx = x + Math.sin(phi) * Math.cos(theta) * blobR * 1.02;
+      const lz = z + Math.sin(phi) * Math.sin(theta) * blobR * 1.02;
+      const ly = h + Math.cos(phi) * blobR * 0.9 * 1.02;
+      const outwardYaw = Math.atan2(lx - x, lz - z);
+      const tiltRange = (1 - leafCfg.uprightBias) * 1.4;
+      const lRotX = (rng() - 0.5) * tiltRange;
+      const lRotY = outwardYaw + (rng() - 0.5) * 0.6;
+      const lRotZ = (rng() - 0.5) * tiltRange;
+      const ls = 0.75 + rng() * 0.6;
+      dummy.position.set(lx, ly, lz);
+      dummy.rotation.set(lRotX, lRotY, lRotZ);
+      dummy.scale.set(ls, ls, ls);
+      dummy.updateMatrix();
+      leaves.setMatrixAt(leafIdx, dummy.matrix);
+      leafSway.push({ mesh: leaves, index: leafIdx, x: lx, y: ly, z: lz, rotX: lRotX, rotY: lRotY, rotZ: lRotZ, s: ls, phase: rng() * Math.PI * 2 });
+      leafIdx++;
+    }
   });
   body.instanceMatrix.needsUpdate = true;
   flowers.instanceMatrix.needsUpdate = true;
-  scene.add(body, flowers);
+  leaves.instanceMatrix.needsUpdate = true;
+  scene.add(body, flowers, leaves);
 }
 
 // Pastos altos: mechones dispersos en primer plano
@@ -480,25 +618,38 @@ const capybaraDarkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughn
 function makeCapybara() {
   const group = new THREE.Group();
 
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.5, 4, 8), capybaraMat);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.5, 6, 12), capybaraMat);
   body.rotation.z = Math.PI / 2;
   body.position.y = 0.24;
   body.castShadow = true;
   group.add(body);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), capybaraMat);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), capybaraMat);
   head.position.set(0.42, 0.28, 0);
   head.scale.set(1.15, 0.85, 0.9);
   head.castShadow = true;
   group.add(head);
 
+  // Hocico rectangular achatado: rasgo más distintivo del capibara frente
+  // a otro roedor genérico de cuerpo similar.
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.13), capybaraMat);
+  snout.position.set(0.56, 0.2, 0);
+  snout.castShadow = true;
+  group.add(snout);
+
   for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), capybaraDarkMat);
+    const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), capybaraDarkMat);
+    nostril.position.set(0.61, 0.21, side * 0.035);
+    group.add(nostril);
+  }
+
+  for (const side of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), capybaraDarkMat);
     ear.position.set(0.46, 0.4, side * 0.09);
     group.add(ear);
   }
 
-  const legGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.22, 6);
+  const legGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.22, 8);
   for (const [lx, lz] of [
     [0.18, 0.14],
     [0.18, -0.14],
@@ -538,19 +689,28 @@ const birdWingMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness:
 function makeBird() {
   const group = new THREE.Group();
 
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), birdBodyMat);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 9), birdBodyMat);
   body.scale.set(1.6, 1, 1);
   group.add(body);
 
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), birdBellyMat);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), birdBellyMat);
   belly.position.set(0, -0.015, 0);
   belly.scale.set(1.3, 0.8, 0.8);
   group.add(belly);
 
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.03, 5), birdBodyMat);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.03, 6), birdBodyMat);
   beak.rotation.z = -Math.PI / 2;
   beak.position.set(0.07, 0, 0);
   group.add(beak);
+
+  // Cola en abanico: rasgo visible en horneros/benteveos posados o en
+  // vuelo, y ayuda a leer la silueta del ave a distancia (antes era solo
+  // un cuerpo ovalado sin rasgo distintivo detrás).
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.06, 4), birdBodyMat);
+  tail.rotation.z = Math.PI / 2;
+  tail.position.set(-0.075, 0, 0);
+  tail.scale.set(1, 0.35, 1.6);
+  group.add(tail);
 
   const wingGeo = new THREE.PlaneGeometry(0.09, 0.04);
   const wingL = new THREE.Mesh(wingGeo, birdWingMat);
@@ -1004,6 +1164,20 @@ renderer.setAnimationLoop((time) => {
     b.mesh.setMatrixAt(b.index, dummy.matrix);
   }
   for (const mesh of shrubBodyMeshes) mesh.instanceMatrix.needsUpdate = true;
+
+  // Las hojas individuales tienen su propio balanceo (más rápido y liviano
+  // que el del cuerpo del arbusto) — no siguen exactamente la rotación del
+  // "blob" padre, pero comparten la misma cadencia de viento así que la
+  // sensación de conjunto es coherente.
+  for (const lf of leafSway) {
+    const sway = Math.sin(t * 1.3 + lf.phase) * 0.09 + Math.sin(t * 2.4 + lf.phase * 1.6) * 0.04;
+    dummy.position.set(lf.x, lf.y, lf.z);
+    dummy.rotation.set(lf.rotX + sway, lf.rotY, lf.rotZ + sway * 0.6);
+    dummy.scale.set(lf.s, lf.s, lf.s);
+    dummy.updateMatrix();
+    lf.mesh.setMatrixAt(lf.index, dummy.matrix);
+  }
+  for (const mesh of leafMeshes) mesh.instanceMatrix.needsUpdate = true;
 
   for (let i = 0; i < treeCanopySway.length; i++) {
     const c = treeCanopySway[i];

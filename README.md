@@ -45,6 +45,9 @@ La escena incluye fauna procedimental (mismo criterio que la vegetación — sin
 - **Mariposas** (16, tipo *Vanessa carye* — especie nativa muy común en la pradera uruguaya) revoloteando a media altura cerca de los arbustos con flor, con aleteo animado — refuerzan la idea de polinización sobre la vegetación florida.
 - **Chapoteos visibles**: cada chapoteo de la laguna dispara también un anillo que se expande y se desvanece en la superficie del agua, sincronizado con el sonido — el mismo evento se ve y se escucha, activo desde que carga la escena (no depende de que el sonido esté encendido).
 - **Balanceo por viento**: pasto, arbustos y copas de los árboles oscilan sutilmente cada frame (más marcado en el pasto, más leve en las copas) — recompone la matriz de cada instancia con una oscilación de dos frecuencias en vez de vértices estáticos, dando sensación de brisa sin depender de un shader propio.
+- **Hojas con silueta real por especie**: cada arbusto suma ~10-22 hojas individuales (no solo el "blob" de follaje) con el contorno 2D característico de su especie real — bilobulada tipo mariposa en pata de vaca, lámina delgada casi sin hoja verdadera en carqueja (fiel a sus tallos aplanados), redondeada de 5 lóbulos en malva sonrojada, lanceolada larga tipo hoja de sauce en chilca, ovalada con borde aserrado/espinoso en espina amarilla. Coloreadas más claras que el follaje base para que se lean por contraste. Cada hoja tiene su propio balanceo de viento.
+- **Capibara con más definición**: hocico rectangular achatado + fosas nasales (rasgo distintivo real del capibara, ausente en el modelo anterior) y más segmentos en cuerpo/cabeza/orejas.
+- **Aves con cola**: se agregó una cola en abanico, visible tanto en vuelo como si se posaran, para leer mejor la silueta a distancia.
 
 Explícitamente **sin locomoción** por ahora — la cámara es fija, lo que se mueve/anima es la fauna y la vegetación (viento).
 
