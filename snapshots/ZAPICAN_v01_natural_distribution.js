@@ -167,12 +167,7 @@ function makeLeafCardMaterial(tint, { kind = "ancha", variant = 0 } = {}) {
     // Aproximación barata a la translucidez: la hoja real deja pasar luz y a
     // contraluz se enciende. Un transmission real sería carísimo en VR, así
     // que se simula con una emisión tenue del propio verde.
-    // La translucidez se simula con una emisión tenue del propio verde. NO
-    // puede tomar `tint`: ahora el color va por instancia y el tinte del
-    // material es blanco, así que emitiría un velo gris sobre toda la hoja.
-    // Se fija un verde medio de follaje, que es de lo que se enciende una
-    // hoja real a contraluz.
-    emissive: 0x6f8a44,
+    emissive: tint,
     emissiveIntensity: 0.12,
   });
 }
@@ -308,151 +303,16 @@ waterGeo.scale(1, 1, WATER_Z_SQUASH);
 // azul de pileta. Conserva reflejo del cielo (clearcoat + envMap) porque en
 // la referencia se ve el cielo espejado en la superficie, pero el cuerpo del
 // agua es opaco y terroso.
-// Mapa de profundidad: la laguna es honda en el centro y somera en la
-// orilla, y eso cambia el color — en el medio se ve el agua, en el borde se
-// ve el fondo a través de ella. Sin este gradiente la lámina es una mancha
-// de un solo tono, que es lo que más la delataba.
-function makeWaterDepthTexture() {
-  const size = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.04, size / 2, size / 2, size * 0.52);
-  // Tonos MUY oscuros, y no por gusto: la lámina está horizontal bajo un
-  // HDRI de cielo completo, así que recibe la irradiancia de medio
-  // hemisferio. Con un albedo medio el difuso satura y el agua sale blanca
-  // — fue el primer intento y era el diagnóstico equivocado: el problema no
-  // era que el color del agua fuese débil, era que reventaba.
-  //
-  // El agua real es oscura porque absorbe casi toda la luz que entra; lo
-  // que vemos de ella es sobre todo reflejo. De ahí que el cuerpo vaya
-  // oscuro y el cielo se sume encima.
-  g.addColorStop(0.0, "rgb(62,72,52)");   // hondo: verde pardo
-  g.addColorStop(0.45, "rgb(76,82,58)");
-  g.addColorStop(0.78, "rgb(98,95,66)");  // somero: se transparenta el fondo
-  g.addColorStop(1.0, "rgb(122,110,78)"); // orilla: se acerca al barro
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  // Manchas de sedimento en suspensión: el agua de laguna no es homogénea.
-  for (let i = 0; i < 70; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const r = 20 + Math.random() * 70;
-    const v = Math.round(36 + Math.random() * 34);
-    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
-    rg.addColorStop(0, `rgba(${v},${v - 4},${Math.round(v * 0.7)},0.16)`);
-    rg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = rg;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  return tex;
-}
-
-// Roughness variable: la superficie no es igual de lisa en todas partes —
-// donde hay corriente o viento se riza y refleja menos, en los remansos
-// queda espejada. Un roughness constante da ese aspecto de plástico
-// barnizado que tenía antes.
-function makeWaterRoughnessTexture() {
-  const size = 256;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  // Centro en 0.62: modula el 0.34 del material hasta ~0.21 en los remansos
-  // y ~0.4 donde riza el viento.
-  ctx.fillStyle = "rgb(158,158,158)";
-  ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 90; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const r = 15 + Math.random() * 55;
-    const v = Math.round(70 + Math.random() * 110);
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, `rgba(${v},${v},${v},0.5)`);
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 3);
-  return tex;
-}
-
-const waterDepthTex = makeWaterDepthTexture();
-const waterRoughTex = makeWaterRoughnessTexture();
-
-// Segunda capa de ondas: la misma textura procedural a otra escala y
-// desplazándose en otra dirección. Una sola frecuencia de onda se lee como
-// un patrón repetido; dos que se cruzan, como agua.
-const waterNormalTex2 = waterNormalTex.clone();
-waterNormalTex2.repeat.set(9, 9);
-waterNormalTex2.needsUpdate = true;
-
 const waterMat = new THREE.MeshPhysicalMaterial({
-  color: 0xffffff, // el color lo pone el mapa de profundidad
-  map: waterDepthTex,
-  roughnessMap: waterRoughTex,
-  roughness: 0.5,
+  color: 0x46422c,
+  roughness: 0.55,
   metalness: 0.0,
   normalMap: waterNormalTex,
-  normalScale: new THREE.Vector2(0.4, 0.4),
-  // El HDRI de atardecer es muy luminoso: con más reflejo que esto la lámina
-  // revienta a blanco y desaparece el color del agua. Una laguna turbia
-  // refleja el cielo, pero no es un espejo.
-  // LÍMITE TÉCNICO, y es el que gobierna toda esta decisión: Three.js
-  // refleja el ENVIRONMENT MAP, no la geometría de la escena. El HDRI es un
-  // "pure sky" — cielo y nada más —, así que por mucho que se afine el
-  // reflejo, la laguna solo puede devolver cielo. No hay ángulo ni roughness
-  // que traiga el sauce que tiene encima: para eso hace falta una CubeCamera
-  // o un Reflector, que cuesta un render extra por frame y queda fuera de
-  // una pasada de materiales (y es caro en un visor autónomo).
-  //
-  // Con la lámina casi horizontal bajo medio hemisferio de cielo, cualquier
-  // intensidad apreciable la revienta a blanco: se probó con el albedo
-  // llevado casi a negro y seguía blanca, porque lo que saturaba era el
-  // especular. La salida honesta es dejar el reflejo en un brillo tenue y
-  // que el agua se lea por su propio color, iluminada por el sol.
-  envMapIntensity: 0.08,
-  clearcoat: 0.03,
-  clearcoatRoughness: 0.55,
-  // `specularIntensity` es la palanca que faltaba. Por defecto vale 1 y el
-  // reflejo especular de un sol bajo sobre una lámina horizontal cubre casi
-  // todo el estanque, tape lo que tape el albedo: da igual que el agua sea
-  // verde oscura o roja, sale blanca. Bajándolo a 0.3 el cuerpo del agua
-  // vuelve a leerse y el brillo queda como brillo.
-  specularIntensity: 0.3,
-  clearcoatNormalMap: waterNormalTex2,
-  clearcoatNormalScale: new THREE.Vector2(0.22, 0.22),
+  normalScale: new THREE.Vector2(0.55, 0.55),
+  envMapIntensity: 0.45, // reflejo apenas insinuado: el agua turbia no es espejo
+  clearcoat: 0.35,
+  clearcoatRoughness: 0.3,
 });
-
-// ShapeGeometry genera las UV a partir de las coordenadas XY crudas de la
-// forma, o sea en unidades de mundo (-4.6 a 4.6 acá). El mapa de
-// profundidad tiene que cubrir ese rango UNA vez y centrado, o el gradiente
-// sale repetido o descuadrado; los de onda, en cambio, se repiten a dos
-// escalas distintas a propósito.
-waterGeo.computeBoundingBox();
-{
-  const bb = waterGeo.boundingBox;
-  const spanX = bb.max.x - bb.min.x;
-  const spanZ = bb.max.z - bb.min.z;
-  const span = Math.max(spanX, spanZ) * 1.02;
-  waterDepthTex.repeat.set(1 / span, 1 / span);
-  waterDepthTex.offset.set(0.5, 0.5);
-  waterDepthTex.needsUpdate = true;
-
-  waterRoughTex.repeat.set(0.34, 0.34);
-  waterNormalTex.repeat.set(1.1, 1.1);
-  waterNormalTex2.repeat.set(2.7, 2.7);
-  waterNormalTex.needsUpdate = true;
-  waterNormalTex2.needsUpdate = true;
-}
 
 const water = new THREE.Mesh(waterGeo, waterMat);
 water.position.set(WATER_CENTER[0], 0.17, WATER_CENTER[1]); // por encima del displacementScale del suelo (0.15) para que no quede tapada
@@ -504,15 +364,7 @@ shoreGeo.scale(1, 1, WATER_Z_SQUASH);
 // Barro húmedo, no arena seca: más oscuro y más saturado que antes, porque
 // un borde claro se recorta contra el pastizal y vuelve a marcar la línea
 // que se quiere disimular.
-const shoreMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff,
-  vertexColors: true,
-  // El barro es rugoso, pero el empapado de la orilla algo menos. Sin mapa
-  // por vértice se toma un valor intermedio y el gradiente de color hace el
-  // resto del trabajo.
-  roughness: 0.92,
-  metalness: 0.0,
-});
+const shoreMat = new THREE.MeshStandardMaterial({ color: 0x58482f, roughness: 1.0 });
 const shore = new THREE.Mesh(shoreGeo, shoreMat);
 shore.position.set(WATER_CENTER[0], 0.162, WATER_CENTER[1]); // apenas bajo el agua, sobre el suelo
 shore.receiveShadow = true;
@@ -936,66 +788,6 @@ function clusteredScatter({
   return points;
 }
 
-// --- Paleta del suelo: cinco materiales que se mezclan -------------------
-// Vive acá, antes de plantar nada, porque la usan DOS cosas: el pintado del
-// terreno y el tinte de la cobertura baja. Si cada una tuviera su paleta, la
-// cobertura se recortaría contra la tierra como gravilla — que es justo lo
-// que pasó al oscurecer la ribera y dejar las matitas con su color viejo.
-const SOIL_DRY      = new THREE.Color(0xC2B189); // tierra seca, clara
-const SOIL_NORMAL   = new THREE.Color(0x9D8B62); // tierra de pastizal
-const SOIL_WET      = new THREE.Color(0x77613F); // barro húmedo de ribera
-const SOIL_ORGANIC  = new THREE.Color(0x6B5C3E); // hojarasca bajo el monte
-const SOIL_LOWGRASS = new THREE.Color(0x8C9256); // verde del pasto raso
-
-const _soilMix = new THREE.Color();
-
-/** Color del suelo en un punto, mezclando los cinco materiales según
- *  humedad, altura, pendiente, densidad de monte y de pasto, más ruido.
- *  `y` es opcional: si no se pasa, se calcula. */
-function soilColorAt(x, z, target, y) {
-  const height = y === undefined ? terrainHeight(x, z) : y;
-  const moisture = soilMoisture(x, z);
-  const under = monteDensity(x, z);
-  const grass = grassDensity(x, z);
-
-  // Pendiente por diferencias finitas: en una ladera la tierra queda
-  // lavada y expuesta; en un hondo se acumula materia y humedad.
-  const EPS = 0.35;
-  const dhx = (terrainHeight(x + EPS, z) - terrainHeight(x - EPS, z)) / (2 * EPS);
-  const dhz = (terrainHeight(x, z + EPS) - terrainHeight(x, z - EPS)) / (2 * EPS);
-  const slope = clamp01(Math.hypot(dhx, dhz) * 5.5);
-
-  // Frecuencia limitada por el muestreo: los vértices del suelo están cada
-  // ~19 cm, así que por encima de ~0.5 ciclos por unidad el ruido aliasea y
-  // el terreno sale moteado como sal y pimienta en vez de granulado.
-  const blotch = fbm(terrainNoise, x * 0.35 + 900, z * 0.35 + 900, 3);
-  const grain = fbm(shoreNoise, x * 0.45 + 1300, z * 0.45 + 1300, 2);
-
-  const relative = clamp01(0.5 + height / (TERRAIN_AMPLITUDE * 1.6));
-  const wet = clamp01(moisture * 1.15 - relative * 0.25 + (blotch - 0.5) * 0.35);
-
-  const dryness = clamp01(relative * 0.55 + slope * 0.35 + (blotch - 0.5) * 0.5);
-  _soilMix.copy(SOIL_NORMAL).lerp(SOIL_DRY, dryness);
-  _soilMix.lerp(SOIL_LOWGRASS, clamp01((grass - 0.42) * 1.25) * 0.55);
-
-  // Hojarasca bajo el monte. El ruido rompe el disco perfecto que daría una
-  // máscara radial limpia.
-  _soilMix.lerp(SOIL_ORGANIC, clamp01(under * 1.2 + (grain - 0.5) * 0.5) * 0.75);
-
-  // La humedad va última porque manda sobre todo lo demás: el barro mojado
-  // no es tierra seca teñida, es otro material.
-  _soilMix.lerp(SOIL_WET, wet * 0.62);
-
-  target.copy(_soilMix).multiplyScalar(0.92 + grain * 0.16);
-  target.userWet = wet;
-  return wet;
-}
-
-// Puntos donde una planta toca el suelo. Se usan al final para oscurecer
-// la tierra a su pie: sin eso, todo objeto se lee como "apoyado encima" en
-// vez de "creciendo desde ahí".
-const contactPoints = [];
-
 // --- 6. Aplicar el relieve a la malla del suelo --------------------------
 // El displacement del material (0.15) sigue dando la rugosidad fina de la
 // textura; esto agrega la ondulación de escala grande, que es geometría real
@@ -1027,28 +819,6 @@ function scatterPositions(count, rMin, rMax, minDistFromPOI) {
 
 const dummy = new THREE.Object3D();
 
-// --- Variación natural de color por individuo ---------------------------
-// Dos plantas de la misma especie nunca tienen exactamente el mismo verde,
-// y esa diferencia es de las señales más fuertes de que algo está vivo y no
-// instanciado. Los márgenes son deliberadamente estrechos — tono ±4%,
-// saturación ±7%, luminosidad ±9% — porque pasados esos valores deja de
-// leerse como variación natural y empieza a leerse como plantas de colores
-// distintos.
-const _hsl = { h: 0, s: 0, l: 0 };
-
-function jitterColor(target, baseHex, r) {
-  target.set(baseHex);
-  target.getHSL(_hsl);
-  const h = (_hsl.h + (r() - 0.5) * 0.08 + 1) % 1;
-  const sat = clamp01(_hsl.s * (1 + (r() - 0.5) * 0.14));
-  const lum = clamp01(_hsl.l * (1 + (r() - 0.5) * 0.18));
-  // Suelos mínimos: ni el follaje más oscuro puede quedarse sin información
-  // de color. Un negro absoluto no existe en vegetación real — lo que se ve
-  // negro en una foto sigue teniendo tono y saturación.
-  target.setHSL(h, Math.max(0.12, sat), Math.max(0.13, lum));
-  return target;
-}
-
 // Árboles: tronco + copa irregular (silueta tipo espinillo/algarrobo)
 // Los árboles ya no se reparten al azar dentro de un anillo: siguen la
 // máscara de monte, que abre claros y junta manchas. `treeRng` es propio
@@ -1072,32 +842,7 @@ const treePositions = clusteredScatter({
 
 const trunkGeo = new THREE.CylinderGeometry(0.05, 0.11, 1.6, 10);
 trunkGeo.translate(0, 0.8, 0);
-
-// Gradiente vertical horneado en los vértices del tronco: la base está más
-// oscura y algo más fría porque acumula humedad y musgo, y aclara hacia
-// arriba donde le pega el sol. Todos los troncos comparten esta geometría,
-// así que el gradiente cuesta una sola vez para los 62 ejemplares.
-{
-  const pos = trunkGeo.attributes.position;
-  const cols = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i) / 1.6; // 0 en la base, 1 en la copa
-    // Curva rápida al principio: la franja húmeda del pie es estrecha.
-    const damp = Math.pow(1 - clamp01(y * 2.2), 2);
-    cols[i * 3] = 1 - damp * 0.42;
-    cols[i * 3 + 1] = 1 - damp * 0.38;
-    cols[i * 3 + 2] = 1 - damp * 0.30; // menos azul: se va a pardo, no a gris
-  }
-  trunkGeo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
-}
-
 const trunkMat = makeBarkMaterial(0xb09a7c);
-trunkMat.vertexColors = true;
-
-// Cuatro cortezas de base, no una. El espinillo y el algarrobo conviven en
-// el mismo monte y no tienen el mismo marrón; encima cada ejemplar varía.
-const BARK_TINTS = [0xb5a084, 0xa89071, 0xc0ab8c, 0x9d8768];
-const trunkColorRng = mulberry32(730051);
 const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
 trunks.castShadow = true;
 
@@ -1150,11 +895,6 @@ treePositions.forEach(([x, z], i) => {
   dummy.scale.set(treeScale, treeScale, treeScale);
   dummy.updateMatrix();
   trunks.setMatrixAt(i, dummy.matrix);
-  trunks.setColorAt(
-    i,
-    jitterColor(tmpColor, BARK_TINTS[i % BARK_TINTS.length], trunkColorRng)
-  );
-  contactPoints.push([x, z, 0.55 * treeScale, 1.0]);
 
   // La copa no se apoya siempre en el mismo punto del tronco: un ejemplar
   // joven la lleva alta y ceñida, uno viejo baja y abierta. Ese desfase es
@@ -1187,7 +927,6 @@ treePositions.forEach(([x, z], i) => {
   canopies.setColorAt(i, tmpColor);
 });
 trunks.instanceMatrix.needsUpdate = true;
-if (trunks.instanceColor) trunks.instanceColor.needsUpdate = true;
 canopies.instanceMatrix.needsUpdate = true;
 canopies.instanceColor.needsUpdate = true;
 scene.add(trunks, canopies);
@@ -1215,14 +954,6 @@ canopyLeaves.castShadow = true;
 // ~21k llamadas correrían toda la secuencia posterior y cambiarían dónde
 // caen árboles, palmeras y fauna. Aislarlo mantiene el layout estable.
 const leafRng = mulberry32(90210);
-
-// Cuatro verdes de base para el follaje del monte, más la variación por
-// hoja que aplica jitterColor: verde medio, verde oscuro de interior de
-// copa, verde seco y amarillento de hoja vieja. Ninguno saturado — el
-// espinillo y el algarrobo tienen follaje grisáceo, no verde de vivero.
-const CANOPY_LEAF_TINTS = [0x9cb865, 0x7d9a52, 0xb0c079, 0x8ea45c];
-// Rng SEPARADO del de posiciones, para no correr la secuencia aprobada.
-const leafColorRng = mulberry32(410337);
 
 const canopyLeafSway = [];
 let canopyLeafIdx = 0;
@@ -1254,14 +985,6 @@ treeCanopySway.forEach((c) => {
     dummy.scale.set(ls, ls, ls);
     dummy.updateMatrix();
     canopyLeaves.setMatrixAt(canopyLeafIdx, dummy.matrix);
-    // Verde por hoja. En una copa real no hay dos hojas del mismo tono: las
-    // del exterior están más amarillas por el sol y las del interior más
-    // oscuras y frías. Con un verde único la copa se lee como una calcomanía
-    // repetida, que es lo que le daba el aspecto plástico.
-    canopyLeaves.setColorAt(
-      canopyLeafIdx,
-      jitterColor(tmpColor, CANOPY_LEAF_TINTS[canopyLeafIdx % CANOPY_LEAF_TINTS.length], leafColorRng)
-    );
     canopyLeafSway.push({
       index: canopyLeafIdx,
       x,
@@ -1277,7 +1000,6 @@ treeCanopySway.forEach((c) => {
   }
 });
 canopyLeaves.instanceMatrix.needsUpdate = true;
-if (canopyLeaves.instanceColor) canopyLeaves.instanceColor.needsUpdate = true;
 scene.add(canopyLeaves);
 
 // --- Tarjetas de hoja sobre lóbulos de follaje ---------------------------
@@ -1366,31 +1088,31 @@ function makeOrganicGeometry(geo, amount, seed) {
   return geo;
 }
 
-function makeFoliageMap() {
-  // El mapa es GRIS, no verde, y esa es la corrección de fondo de esta
-  // pasada: antes horneaba el color de la especie dentro de la textura y el
-  // material lo volvía a aplicar como `color`. El resultado era el color
-  // elevado al cuadrado — y con la variación por instancia, al cubo. De ahí
-  // venían los arbustos casi negros.
-  //
-  // Ahora la textura solo aporta el moteado de luz y sombra del follaje, y
-  // el color entra una sola vez, por instancia, con su variación propia.
+function makeFoliageMap(baseHex) {
+  // OJO: THREE.Color.r/g/b devuelve componentes en espacio LINEAR (con
+  // color management, activo por defecto desde r152), no sRGB. Escribirlos
+  // directo como bytes en un canvas los oscurece muchísimo (casi negro).
+  // Por eso acá se extrae el RGB directo del entero hex, sin pasar por
+  // THREE.Color.
+  const br = (baseHex >> 16) & 255;
+  const bg = (baseHex >> 8) & 255;
+  const bb = baseHex & 255;
+
   const size = 256;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d");
-  // Base clara: la media del moteado tiene que quedar cerca del blanco para
-  // que el color por instancia llegue entero.
-  ctx.fillStyle = "rgb(214,214,214)";
+  ctx.fillStyle = `rgb(${br},${bg},${bb})`;
   ctx.fillRect(0, 0, size, size);
   for (let i = 0; i < 260; i++) {
     const x = Math.random() * size;
     const y = Math.random() * size;
     const r = 3 + Math.random() * 9;
-    // Sombra interior del follaje, nunca por debajo del 55% de luz: el
-    // hueco entre hojas es oscuro, no negro.
-    const shade = Math.round(150 + Math.random() * 70);
-    ctx.fillStyle = `rgba(${shade},${shade},${shade},0.42)`;
+    const shade = 0.55 + Math.random() * 0.75;
+    const cr = Math.min(255, Math.round(br * shade));
+    const cg = Math.min(255, Math.round(bg * shade));
+    const cb = Math.min(255, Math.round(bb * shade));
+    ctx.fillStyle = `rgba(${cr},${cg},${cb},0.55)`;
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * (0.5 + Math.random() * 0.5), Math.random() * Math.PI, 0, Math.PI * 2);
     ctx.fill();
@@ -1508,20 +1230,9 @@ const shrubBodyMeshes = [];
 const leafSway = [];
 const leafMeshes = [];
 
-// Una sola textura de follaje para las cinco especies, en vez de una por
-// especie. Antes cada una generaba su propio canvas porque llevaba el color
-// horneado; ahora que el color va por instancia, la textura es la misma y se
-// ahorran cuatro subidas a la GPU.
-const sharedFoliageMap = makeFoliageMap();
-const sharedFoliageBump = makeFoliageBumpMap();
-
 // Rng propio del estrato arbustivo, para que reordenarlo no corra la
 // secuencia global y mueva la fauna.
 const shrubRng = mulberry32(880213);
-// Rng SEPARADO para el color. Si el tinte consumiera del mismo generador
-// que las posiciones y escalas, agregar variación de color correría toda la
-// secuencia y movería la distribución ya aprobada.
-const shrubColorRng = mulberry32(51199);
 let shrubTotal = 0;
 let flowerTotal = 0;
 
@@ -1548,16 +1259,11 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
   });
 
   const bodyMat = new THREE.MeshStandardMaterial({
-    // Blanco: el color lo pone `instanceColor`, una sola vez y con su
-    // variación por ejemplar. El mapa solo aporta el moteado.
-    color: 0xffffff,
-    map: sharedFoliageMap,
-    normalMap: sharedFoliageBump,
+    color: species.foliage,
+    map: makeFoliageMap(species.foliage),
+    normalMap: makeFoliageBumpMap(),
     normalScale: new THREE.Vector2(0.7, 0.7),
-    // El follaje no brilla, pero tampoco es un mate absoluto: la hoja nueva
-    // devuelve algo de luz. Un 0.88 plano se lee como fieltro.
-    roughness: species.roughness ?? 0.88,
-    metalness: 0.0,
+    roughness: species.roughness ?? 0.9,
   });
   const body = new THREE.InstancedMesh(species.geo(), bodyMat, positions.length);
   body.castShadow = true;
@@ -1597,10 +1303,7 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
   const leafHsl = { h: 0, s: 0, l: 0 };
   leafBaseColor.getHSL(leafHsl);
   leafBaseColor.setHSL(leafHsl.h, Math.min(1, leafHsl.s * 0.9), Math.min(0.95, leafHsl.l * 2.1));
-  // Blanco en el material, color por instancia: el tinte se aplicaba antes
-  // a las 1.582 hojas por igual, así que todas las de una especie tenían
-  // exactamente el mismo verde.
-  const leafMat = makeLeafCardMaterial(0xffffff, {
+  const leafMat = makeLeafCardMaterial(leafBaseColor, {
     kind: leafCfg.kind ?? "ancha",
     variant: speciesIndex % 2,
   });
@@ -1624,18 +1327,12 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
     dummy.scale.set(s, sY, s);
     dummy.updateMatrix();
     body.setMatrixAt(i, dummy.matrix);
-    contactPoints.push([x, z, s * 0.6, 0.75]);
     shrubSway.push({ mesh: body, index: i, x, y: h, z, rotX, rotY, rotZ, s, sY, phase: shrubRng() * Math.PI * 2 });
 
-    // Tono por ejemplar dentro de los márgenes naturales. Antes esto
-    // multiplicaba el color de especie por un escalar, encima de un material
-    // que YA lo aplicaba dos veces: de ahí los arbustos negros.
-    body.setColorAt(i, jitterColor(tmpColor, species.foliage, shrubColorRng));
-    // El color pasó a un rng propio, pero la versión aprobada consumía UN
-    // valor de `shrubRng` justo acá. Se descarta uno para que la escala, la
-    // rotación y la floración de los arbustos siguientes caigan exactamente
-    // donde caían: la distribución aprobada no se mueve.
-    shrubRng();
+    // Tono por ejemplar: dos arbustos vecinos del mismo modelo dejan de
+    // leerse como la misma copia pegada dos veces.
+    tmpColor.set(species.foliage).multiplyScalar(0.84 + shrubRng() * 0.32);
+    body.setColorAt(i, tmpColor);
 
     // FLORES: antes llevaba tres cada arbusto, los 110 de la escena, y el
     // campo parecía un cantero. Ahora solo florece el que cae dentro de una
@@ -1680,9 +1377,6 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
       dummy.scale.set(ls, ls, ls);
       dummy.updateMatrix();
       leaves.setMatrixAt(leafIdx, dummy.matrix);
-      // La hoja va algo más clara que el cuerpo del arbusto — es lo que hace
-      // que se lea como hoja recortada sobre la masa y no como parte de ella.
-      leaves.setColorAt(leafIdx, jitterColor(tmpColor, leafBaseColor.getHex(), leafColorRng));
       leafSway.push({ mesh: leaves, index: leafIdx, x: lx, y: ly, z: lz, rotX: lRotX, rotY: lRotY, rotZ: lRotZ, s: ls, phase: shrubRng() * Math.PI * 2 });
       leafIdx++;
     }
@@ -1695,7 +1389,6 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
   flowers.instanceMatrix.needsUpdate = true;
   if (body.instanceColor) body.instanceColor.needsUpdate = true;
   leaves.instanceMatrix.needsUpdate = true;
-  if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true;
   scene.add(body, flowers, leaves);
 });
 
@@ -1801,13 +1494,7 @@ coverPositions.forEach(([x, z], i) => {
   dummy.scale.set(s, s * (0.5 + coverRng() * 0.7), s);
   dummy.updateMatrix();
   groundCover.setMatrixAt(i, dummy.matrix);
-  // Cada matita toma el color del suelo donde está plantada y solo se
-  // desvía un poco hacia el verde. Con un color propio fijo, al oscurecer
-  // la ribera se recortaban contra la tierra como gravilla esparcida.
-  soilColorAt(x, z, tmpColor);
-  tmpColor
-    .lerp(under > 0.3 ? coverLitter : coverGreen, 0.3)
-    .multiplyScalar(1.02 + coverRng() * 0.16);
+  tmpColor.lerpColors(coverGreen, coverLitter, under * 0.8).multiplyScalar(0.92 + coverRng() * 0.16);
   groundCover.setColorAt(i, tmpColor);
 });
 groundCover.instanceMatrix.needsUpdate = true;
@@ -1966,7 +1653,6 @@ for (let w = 0; w < WILLOW_COUNT; w++) {
   trunkGeo.translate(0, height / 2, 0);
   const trunk = new THREE.Mesh(trunkGeo, willowTrunkMat);
   trunk.position.set(bx, groundY(bx, bz) + 0.1, bz);
-  contactPoints.push([bx, bz, 0.7, 1.05]);
   trunk.rotation.x = dirZ * lean;
   trunk.rotation.z = -dirX * lean;
   trunk.castShadow = true;
@@ -2105,7 +1791,6 @@ let plumeIdx = 0;
 
 pampasPositions.forEach(([cx, cz]) => {
   const clumpBase = groundY(cx, cz);
-  contactPoints.push([cx, cz, 0.42, 0.7]);
   const clumpScale = 0.85 + rng() * 0.5;
 
   for (let b = 0; b < BLADES_PER_CLUMP; b++) {
@@ -2237,7 +1922,6 @@ ombuPositions.forEach(([x, z], i) => {
   ombuTrunkGeo.translate(0, trunkH / 2, 0);
   const ombuTrunk = new THREE.Mesh(ombuTrunkGeo, ombuTrunkMat);
   ombuTrunk.position.set(x, base + 0.75 * scale, z);
-  contactPoints.push([x, z, 1.5 * scale, 1.25]);
   ombuTrunk.castShadow = true;
   scene.add(ombuTrunk);
 
@@ -2496,7 +2180,6 @@ butiaPositions.forEach(([x, z], p) => {
   butiaTrunkGeo.translate(0, trunkH / 2, 0);
   const butiaTrunk = new THREE.Mesh(butiaTrunkGeo, butiaTrunkMat);
   butiaTrunk.position.set(x, butiaBase + 0.05, z);
-  contactPoints.push([x, z, 0.5, 0.8]);
   butiaTrunk.castShadow = true;
   scene.add(butiaTrunk);
 
@@ -2602,156 +2285,6 @@ butiaPositions.forEach(([x, z], p) => {
 });
 butiaLeaflets.instanceMatrix.needsUpdate = true;
 scene.add(butiaLeaflets);
-
-// --- Pintado del suelo: mezcla de cinco materiales -----------------------
-// El suelo era una sola textura seca repetida, y eso es lo que lo delataba:
-// un campo real no tiene el mismo color a un metro del agua que a quince.
-//
-// En vez de cargar cinco texturas y mezclarlas en un shader, se pinta el
-// COLOR POR VÉRTICE de la malla del suelo. MeshStandardMaterial multiplica
-// el color de vértice por el mapa difuso de forma nativa, así que no hace
-// falta tocar el shader ni sumar un solo draw call, y la malla ya tiene
-// 161×161 vértices — unos 19 cm de resolución, de sobra para gradientes de
-// humedad y manchas de hojarasca.
-//
-// La mezcla se calcula con las MISMAS funciones que reparten la vegetación,
-// así que la tierra y lo que crece encima cuentan la misma historia.
-{
-  const pos = groundGeo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const wetness = new Float32Array(pos.count);
-  const c = new THREE.Color();
-
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    wetness[i] = soilColorAt(x, z, c, pos.getY(i));
-    colors[i * 3] = c.r;
-    colors[i * 3 + 1] = c.g;
-    colors[i * 3 + 2] = c.b;
-  }
-
-  // --- Sombra de contacto al pie de cada planta -------------------------
-  // Sin esto, cada objeto se lee "apoyado encima" del suelo. Lo que se pinta
-  // NO es un círculo negro: el radio se modula con ruido según el ángulo, y
-  // la intensidad cae de forma suave, así que la mancha queda lobulada, como
-  // la acumulación real de hojarasca y sombra alrededor de una mata.
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    let darken = 0;
-    for (let k = 0; k < contactPoints.length; k++) {
-      const cp = contactPoints[k];
-      const dx = x - cp[0];
-      const dz = z - cp[1];
-      const d2 = dx * dx + dz * dz;
-      const reach = cp[2] * 2.1;
-      if (d2 > reach * reach) continue;
-      const d = Math.sqrt(d2);
-      const ang = Math.atan2(dz, dx);
-      // Radio irregular: el borde de la mancha entra y sale.
-      const wobble = 0.72 + fbm(shoreNoise, Math.cos(ang) * 2 + cp[0], Math.sin(ang) * 2 + cp[1], 2) * 0.6;
-      const r = cp[2] * wobble * 2.1;
-      if (d > r) continue;
-      darken = Math.max(darken, (1 - d / r) * (1 - d / r) * 0.24 * cp[3]);
-    }
-    if (darken <= 0) continue;
-    colors[i * 3] *= 1 - darken;
-    colors[i * 3 + 1] *= 1 - darken * 0.94;
-    colors[i * 3 + 2] *= 1 - darken * 0.88; // se va a pardo, no a gris
-  }
-
-  // Suelo mínimo de luz. La suma de barro húmedo + hojarasca + sombra de
-  // contacto podía llevar la ribera casi al negro, que es el mismo error
-  // que los arbustos: la tierra mojada es OSCURA, no negra, y conserva
-  // color. Este tope lo garantiza pase lo que pase con las máscaras.
-  const FLOOR = 0.17;
-  for (let i = 0; i < pos.count; i++) {
-    const lum = colors[i * 3] * 0.299 + colors[i * 3 + 1] * 0.587 + colors[i * 3 + 2] * 0.114;
-    if (lum >= FLOOR || lum <= 0) continue;
-    const lift = FLOOR / lum;
-    colors[i * 3] = Math.min(1, colors[i * 3] * lift);
-    colors[i * 3 + 1] = Math.min(1, colors[i * 3 + 1] * lift);
-    colors[i * 3 + 2] = Math.min(1, colors[i * 3 + 2] * lift);
-  }
-
-  groundGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  groundMat.vertexColors = true;
-  // El mapa difuso de Poly Haven ya trae su propio color; se blanquea un
-  // poco para que el pintado por vértice mande y no se peleen dos tierras.
-  groundMat.color.setHex(0xf0ece4);
-  groundMat.needsUpdate = true;
-
-  // --- Roughness variable con la humedad: INTENTADO Y REVERTIDO ---------
-  // Lo que distingue barro de tierra seca no es solo el color: el mojado
-  // refleja. MeshStandardMaterial no admite roughness por vértice, así que
-  // se probó inyectar un atributo y tres líneas de shader con
-  // onBeforeCompile, modulando `roughnessFactor` con la humedad.
-  //
-  // Resultado: toda la ribera se llenó de un moteado de sal y pimienta —
-  // el material dejó de sombrear bien. Se revirtió en vez de insistir,
-  // porque el encargo pedía exactamente eso ante un sombreado con
-  // artefactos, y porque la ganancia era menor que el daño: bajo este HDRI
-  // de atardecer, la diferencia especular entre barro y tierra seca apenas
-  // se percibe, mientras que el color sí.
-  //
-  // La humedad, entonces, se lee por COLOR (más oscuro y más saturado hacia
-  // el agua), que es como se lee en una foto de campo al atardecer. Queda
-  // pendiente para una pasada de shaders propios.
-}
-
-  // --- Gradiente de humedad de la orilla --------------------------------
-  // Va acá y no junto a la malla de la orilla porque usa la paleta del suelo
-  // y `tmpColor`, que se declaran más abajo en el archivo: allá arriba
-  // estarían en zona muerta temporal y reventaría al cargar.
-  //
-  // La orilla era un marrón plano de punta a punta. Ahora lleva color por
-  // vértice: barro empapado y oscuro pegado al agua, que se seca y aclara
-  // hacia afuera hasta encontrarse con el color del suelo vecino. Es la
-  // transición de humedad del brief, resuelta con material y sin agregar un
-  // solo objeto.
-{
-  const WET_MUD = new THREE.Color(0x3E3220);
-  const DAMP    = new THREE.Color(0x5A4930);
-  const pos = shoreGeo.attributes.position;
-  const cols = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const zLocal = pos.getZ(i);
-    // `rotateX(-90°)` lleva la Y de la forma 2D a -Z, así que para recuperar
-    // el ángulo con el que se construyó el contorno hay que deshacer ese
-    // signo además del achatamiento. Sin invertirlo, `waterRadiusAt` recibe
-    // el ángulo espejado, devuelve el radio de otro punto de la costa y el
-    // gradiente se calcula contra una referencia equivocada — que es por lo
-    // que la franja salía uniformemente pálida.
-    const zShape = -zLocal / WATER_Z_SQUASH;
-    const ang = Math.atan2(zShape, x);
-    const rEdge = waterRadiusAt(ang);
-    const rOuter = rEdge * shoreWidthAt(ang);
-    // 0 justo en el agua, 1 en el borde exterior de la franja.
-    const t = clamp01((Math.hypot(x, zShape) - rEdge) / Math.max(0.001, rOuter - rEdge));
-    // El secado no es lineal, y la curva tiene que ser MUY lenta: el agujero
-    // interior del anillo está a 0.98× del radio del agua, o sea POR DEBAJO
-    // de la lámina. Los vértices más oscuros quedan tapados por el agua, así
-    // que el tramo que se ve empieza ya avanzado — con una curva cuadrática
-    // la franja visible salía casi toda seca y pálida.
-    const dryT = t * t * t;
-    c.copy(WET_MUD).lerp(DAMP, dryT);
-    // El barro seco se acerca al color del suelo que tiene al lado.
-    soilColorAt(x + WATER_CENTER[0], zLocal + WATER_CENTER[1], tmpColor);
-    c.lerp(tmpColor, dryT * 0.4);
-    // Moteado: charcos y zonas pisadas, para que la franja no sea un degradé
-    // perfecto de manual.
-    const n = fbm(shoreNoise, x * 0.9 + 2200, zLocal * 0.9 + 2200, 2);
-    c.multiplyScalar(0.88 + n * 0.26);
-    cols[i * 3] = c.r;
-    cols[i * 3 + 1] = c.g;
-    cols[i * 3 + 2] = c.b;
-  }
-  shoreGeo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
-}
-
 
 // --- Monte lejano: cierra el horizonte ------------------------------------
 // Con el HDRI de cielo puro el horizonte queda vacío, así que la línea de
@@ -3538,13 +3071,8 @@ renderer.setAnimationLoop((time) => {
   for (const ring of poiMarkers) {
     ring.material.opacity = 0.5 + 0.3 * Math.sin(time * 0.002 + ring.position.x);
   }
-  // Movimiento muy lento y cruzado: las dos capas de onda se desplazan en
-  // direcciones distintas, así que el patrón nunca se repite a ojo. Una
-  // sola capa, por lento que vaya, se lee como una textura que resbala.
-  waterNormalTex.offset.x = time * 0.0000125;
-  waterNormalTex.offset.y = time * 0.0000075;
-  waterNormalTex2.offset.x = -time * 0.0000068;
-  waterNormalTex2.offset.y = time * 0.0000104;
+  waterNormalTex.offset.x = time * 0.00002;
+  waterNormalTex.offset.y = time * 0.000012;
 
   // Anillos de chapoteo: se expanden y desvanecen, se descartan al terminar.
   for (let i = activeSplashes.length - 1; i >= 0; i--) {
