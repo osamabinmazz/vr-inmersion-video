@@ -321,31 +321,7 @@ scene.add(water);
 // Orilla de barro expuesto: banda de tierra sin pasto entre el agua y la
 // pradera, como en la referencia (el nivel del agua sube y baja y deja el
 // borde pelado). Es un anillo con el mismo contorno irregular.
-// El anillo de barro era un offset uniforme del contorno del agua (1.3×):
-// un ancho constante todo alrededor, que se lee como una junta de goma.
-// Ahora el ancho varía entre 1.08× y 1.55× con ruido a lo largo de la
-// costa, así que hay playas anchas y tramos donde el pasto llega al agua.
-// El ruido se calcula acá y no con reedBandWidth porque esta forma se
-// construye antes de que exista el módulo ecológico.
-function shoreWidthAt(angle) {
-  const n =
-    0.5 +
-    0.28 * Math.sin(angle * 1.0 + 1.9) +
-    0.16 * Math.sin(angle * 2.0 + 0.4) +
-    0.09 * Math.sin(angle * 3.0 + 3.1) +
-    0.05 * Math.sin(angle * 5.0 + 2.2);
-  return 1.08 + Math.max(0, Math.min(1, n)) * 0.47;
-}
-
-const shoreShape = new THREE.Shape();
-for (let i = 0; i <= WATER_SEGMENTS; i++) {
-  const a = (i / WATER_SEGMENTS) * Math.PI * 2;
-  const r = waterRadiusAt(a) * shoreWidthAt(a);
-  const x = Math.cos(a) * r;
-  const y = Math.sin(a) * r;
-  if (i === 0) shoreShape.moveTo(x, y);
-  else shoreShape.lineTo(x, y);
-}
+const shoreShape = makeWaterOutlineShape(1.3);
 const shoreHole = new THREE.Path();
 for (let i = 0; i <= WATER_SEGMENTS; i++) {
   const a = (i / WATER_SEGMENTS) * Math.PI * 2;
@@ -361,10 +337,7 @@ const shoreGeo = new THREE.ShapeGeometry(shoreShape, 1);
 shoreGeo.rotateX(-Math.PI / 2);
 shoreGeo.scale(1, 1, WATER_Z_SQUASH);
 
-// Barro húmedo, no arena seca: más oscuro y más saturado que antes, porque
-// un borde claro se recorta contra el pastizal y vuelve a marcar la línea
-// que se quiere disimular.
-const shoreMat = new THREE.MeshStandardMaterial({ color: 0x58482f, roughness: 1.0 });
+const shoreMat = new THREE.MeshStandardMaterial({ color: 0x6d5b46, roughness: 1.0 });
 const shore = new THREE.Mesh(shoreGeo, shoreMat);
 shore.position.set(WATER_CENTER[0], 0.162, WATER_CENTER[1]); // apenas bajo el agua, sobre el suelo
 shore.receiveShadow = true;
@@ -416,393 +389,6 @@ function farFromPOI(x, z, minDist) {
   return POI_KEEP_OUT.every((k) => k.distanceTo(p) > minDist);
 }
 
-// ===========================================================================
-// SISTEMA ECOLÓGICO: ruido, relieve, zonas y distribución en grupos
-// ===========================================================================
-// Lo que hacía que el paisaje se leyera como procedural no era el número de
-// plantas ni su calidad: era que TODAS salían de un random uniforme dentro
-// de un anillo. Eso reparte con densidad constante y sin correlación entre
-// vecinos, que es exactamente lo que la naturaleza nunca hace. Un campo real
-// se organiza por agua, suelo y competencia, y eso produce manchas, claros y
-// gradientes.
-//
-// Acá se construye ese sustrato:
-//   1. ruido de valor con fBm  → todo lo demás se cuelga de él
-//   2. campo de altura         → el terreno deja de ser un plano
-//   3. zonas ecológicas        → qué crece dónde, con fronteras irregulares
-//   4. distribución en grupos  → cómo se reparte dentro de cada zona
-
-// --- 1. Ruido de valor 2D (determinista, independiente del rng global) ----
-// Se usa ruido de valor y no Perlin/Simplex a propósito: para máscaras de
-// densidad y ondulaciones suaves no se distingue, y esto son veinte líneas
-// sin dependencias.
-function makeNoise2D(seed) {
-  const perm = new Uint8Array(512);
-  const order = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) order[i] = i;
-  const shuffle = mulberry32(seed);
-  for (let i = 255; i > 0; i--) {
-    const j = Math.floor(shuffle() * (i + 1));
-    const t = order[i];
-    order[i] = order[j];
-    order[j] = t;
-  }
-  for (let i = 0; i < 512; i++) perm[i] = order[i & 255];
-
-  const hash = (xi, zi) => perm[(perm[xi & 255] + zi) & 255] / 255;
-  // Quintic: suaviza también la segunda derivada, así el terreno no muestra
-  // las aristas de la grilla del ruido en las zonas planas.
-  const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
-
-  return function noise(x, z) {
-    const xi = Math.floor(x);
-    const zi = Math.floor(z);
-    const xf = x - xi;
-    const zf = z - zi;
-    const u = fade(xf);
-    const v = fade(zf);
-    const a = hash(xi, zi);
-    const b = hash(xi + 1, zi);
-    const c = hash(xi, zi + 1);
-    const d = hash(xi + 1, zi + 1);
-    const top = a + (b - a) * u;
-    const bottom = c + (d - c) * u;
-    return top + (bottom - top) * v; // 0..1
-  };
-}
-
-/** Suma de octavas: da detalle a varias escalas en vez de una sola mancha. */
-function fbm(noise, x, z, octaves = 4, lacunarity = 2.0, gain = 0.5) {
-  let sum = 0;
-  let amp = 1;
-  let norm = 0;
-  let freq = 1;
-  for (let o = 0; o < octaves; o++) {
-    sum += noise(x * freq, z * freq) * amp;
-    norm += amp;
-    amp *= gain;
-    freq *= lacunarity;
-  }
-  return sum / norm; // 0..1
-}
-
-const terrainNoise = makeNoise2D(11071831); // el año de la Salsipuedes, como semilla
-const monteNoise = makeNoise2D(482913);
-const shrubNoise = makeNoise2D(90517);
-const grassNoise = makeNoise2D(313377);
-const flowerNoise = makeNoise2D(667401);
-const shoreNoise = makeNoise2D(155320);
-
-const smoothstep = (a, b, t) => {
-  const x = Math.max(0, Math.min(1, (t - a) / (b - a)));
-  return x * x * (3 - 2 * x);
-};
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
-
-// --- 2. Distancia con signo a la orilla ----------------------------------
-// Positiva fuera del agua, negativa dentro. Es la señal que gobierna toda la
-// transición ribereña: juncal, suelo húmedo, pastizal de humedal y, más
-// lejos, el monte. El contorno de la laguna ya es irregular (waterRadiusAt),
-// así que estas bandas heredan esa sinuosidad sin esfuerzo.
-function distanceToWater(x, z) {
-  const dx = x - WATER_CENTER[0];
-  const dz = (z - WATER_CENTER[1]) / WATER_Z_SQUASH;
-  const angle = Math.atan2(dz, dx);
-  return Math.hypot(dx, dz) - waterRadiusAt(angle);
-}
-
-/** Ancho del juncal en este punto de la costa. Varía de 0.5 a 2.3 m con el
- *  ángulo: una laguna real no tiene un cinturón de juncos de ancho
- *  constante — hay orillas abiertas y rincones cerrados de totora. */
-function reedBandWidth(x, z) {
-  const angle = Math.atan2(z - WATER_CENTER[1], x - WATER_CENTER[0]);
-  const n = fbm(shoreNoise, Math.cos(angle) * 2.5 + 10, Math.sin(angle) * 2.5 + 10, 3);
-  return 0.5 + n * 1.8;
-}
-
-// --- 3. Campo de altura --------------------------------------------------
-// Ondulaciones suaves, nunca colinas. La amplitud total ronda los 25 cm en
-// 30 m de terreno: suficiente para que la línea del suelo deje de ser recta
-// y para que las plantas se asienten a distintas alturas, sin que se note
-// como relieve dramático ni rompa la sensación de llanura, que es lo que la
-// pampa es.
-const TERRAIN_AMPLITUDE = 0.22;
-const WATER_SURFACE_Y = 0.17;
-
-function terrainHeight(x, z) {
-  const d = distanceToWater(x, z);
-
-  // Ondulación general de escala grande + rugosidad fina encima.
-  // El factor 2.6 no es decorativo: el fBm de ruido de valor se concentra
-  // alrededor de 0.5 y su desviación real ronda ±0.2, no ±0.5. Sin
-  // normalizarlo, una amplitud nominal de 22 cm daba un relieve medido de
-  // 15 cm en 30 m de terreno — invisible. Con el factor, el rango queda en
-  // unos 40 cm: una loma de 40 cm cada 15 m es un 1,3% de pendiente, que es
-  // ondulación de pampa, no una colina.
-  const broad = (fbm(terrainNoise, x * 0.055 + 50, z * 0.055 + 50, 3) - 0.5) * 2.6;
-  const fine = (fbm(terrainNoise, x * 0.22 + 200, z * 0.22 + 200, 2) - 0.5) * 2.2;
-  let h = broad * TERRAIN_AMPLITUDE + fine * TERRAIN_AMPLITUDE * 0.22;
-
-  // El relieve se apaga al acercarse al agua. No es un detalle estético: la
-  // lámina y la orilla de barro son mallas planas a altura fija, y si el
-  // terreno subiera o bajara debajo de ellas quedarían flotando o enterradas.
-  // Levantar el agua a un terreno ondulado es una tarea aparte y más cara.
-  h *= smoothstep(0.0, 3.0, d);
-
-  // Depresión húmeda: una franja apenas hundida a uno o dos metros de la
-  // orilla, que es donde el nivel sube y baja. Vale 0 justo en el borde —
-  // por lo mismo de arriba — y se desvanece a los 6 m.
-  h -= 0.06 * smoothstep(0.0, 1.2, d) * (1 - smoothstep(1.2, 6.0, d));
-
-  return h;
-}
-
-/** Altura del suelo para asentar una instancia. Si la vegetación no
- *  muestrea esto, el relieve solo sirve para que las plantas floten. */
-function groundY(x, z) {
-  return terrainHeight(x, z);
-}
-
-/** Humedad del suelo, 0 (seco) a 1 (empapado). Manda la distancia al agua,
- *  pero el ruido la desordena para que no queden anillos concéntricos. */
-function soilMoisture(x, z) {
-  const d = distanceToWater(x, z);
-  const base = 1 - smoothstep(0.0, 6.0, Math.max(0, d));
-  const n = fbm(shoreNoise, x * 0.12 + 70, z * 0.12 + 70, 3) - 0.5;
-  return clamp01(base + n * 0.35);
-}
-
-// --- 4. Zonas ecológicas -------------------------------------------------
-// Las fronteras no son círculos ni rectas: cada máscara mezcla la distancia
-// al agua con ruido, así que los límites entran y salen de forma irregular.
-const ZONES = {
-  AGUA: "agua",
-  JUNCAL: "juncal",
-  HUMEDAL: "humedal",
-  PASTIZAL_HUMEDO: "pastizal_humedo",
-  PASTIZAL_ABIERTO: "pastizal_abierto",
-  MATORRAL: "matorral",
-  MONTE: "monte",
-  CLARO: "claro",
-};
-
-/** Densidad de monte: dónde hay masa de árboles y dónde hay claro.
- *  Es la máscara que crea grupos y vacíos en vez de reparto parejo. */
-function monteDensity(x, z) {
-  const n = fbm(monteNoise, x * 0.075 + 30, z * 0.075 + 30, 4);
-  // El umbral alto es lo que abre los claros: por debajo de 0.44 no crece
-  // ningún árbol, y eso es más o menos un tercio del terreno.
-  let d = smoothstep(0.44, 0.78, n);
-  // Cerca del agua el monte rarea (suelo saturado) y muy lejos también
-  // (queda el pastizal abierto de la llanura).
-  const dw = distanceToWater(x, z);
-  d *= smoothstep(1.2, 4.0, dw);
-  d *= 1 - smoothstep(14.0, 19.0, Math.hypot(x, z));
-  return clamp01(d);
-}
-
-function matorralDensity(x, z) {
-  const n = fbm(shrubNoise, x * 0.11 + 80, z * 0.11 + 80, 4);
-  let d = smoothstep(0.42, 0.72, n);
-  // El matorral ocupa sobre todo el borde del monte: donde hay algo de
-  // árboles pero no masa cerrada. Es lo que pasa de verdad — los arbustos
-  // no prosperan ni en el pastizal raso ni bajo el dosel denso.
-  const m = monteDensity(x, z);
-  d *= 0.35 + 1.3 * m * (1 - m) * 2.2;
-  d *= smoothstep(0.6, 2.2, distanceToWater(x, z));
-  return clamp01(d);
-}
-
-function grassDensity(x, z) {
-  const n = fbm(grassNoise, x * 0.14 + 120, z * 0.14 + 120, 3);
-  // Las gramíneas son lo contrario del monte: llenan lo que los árboles
-  // dejan libre. Por eso la densidad crece donde monteDensity baja.
-  const open = 1 - monteDensity(x, z) * 0.6;
-  // Suelo mínimo de 0.35: un claro es un claro de ÁRBOLES, no un desierto.
-  // Sin este piso, las zonas de baja densidad quedaban de tierra pelada, que
-  // es exactamente el aspecto artificial que se quería quitar.
-  return clamp01(Math.max(0.35, (0.45 + n * 0.75) * open));
-}
-
-/** Máscara de manchas de flores. Deliberadamente restrictiva: las flores
- *  tienen que ser un detalle localizado, no una alfombra. */
-function flowerPatch(x, z) {
-  const n = fbm(flowerNoise, x * 0.19 + 300, z * 0.19 + 300, 3);
-  return smoothstep(0.50, 0.66, n);
-}
-
-/** Apertura visual alrededor de los personajes: no viven en un jardín, y
- *  desde la cámara tiene que haber línea de visión hacia ellos. */
-function poiClearing(x, z) {
-  let openness = 1;
-  for (const k of POI_KEEP_OUT) {
-    const d = Math.hypot(x - k.x, z - k.y);
-    // Espacio de actividad despejado hasta 2 m, difuminado hasta 3.6 m.
-    openness = Math.min(openness, smoothstep(2.0, 3.6, d));
-  }
-  // Corredor visual desde la cámara (0, 4) hacia los marcadores. La primera
-  // versión abría una cuña de 11 m y dejaba el primer plano pelado, que es
-  // peor que tener los personajes medio tapados: un claro perfectamente
-  // despejado delante de la cámara se lee como un pasillo, no como un
-  // paisaje. Ahora solo despeja el tramo donde están los marcadores (de 3 a
-  // 9 m) y solo para lo que de verdad tapa: los árboles.
-  const toX = x - 0;
-  const toZ = z - 4;
-  const dist = Math.hypot(toX, toZ);
-  if (dist > 3.0 && dist < 9.0 && toZ < 0) {
-    const lateral = Math.abs(toX / Math.max(1, Math.abs(toZ)));
-    if (lateral < 0.4) openness = Math.min(openness, 0.5 + lateral);
-  }
-  return clamp01(openness);
-}
-
-function ecologicalZone(x, z) {
-  const d = distanceToWater(x, z);
-  if (d < 0) return ZONES.AGUA;
-  if (d < reedBandWidth(x, z)) return ZONES.JUNCAL;
-  const moisture = soilMoisture(x, z);
-  if (moisture > 0.62) return ZONES.HUMEDAL;
-  if (monteDensity(x, z) > 0.45) return ZONES.MONTE;
-  if (matorralDensity(x, z) > 0.4) return ZONES.MATORRAL;
-  if (moisture > 0.3) return ZONES.PASTIZAL_HUMEDO;
-  if (grassDensity(x, z) < 0.28) return ZONES.CLARO;
-  return ZONES.PASTIZAL_ABIERTO;
-}
-
-// --- 5. Distribución ----------------------------------------------------
-/** Valor con forma de campana en [min,max]: promedio de tres uniformes.
- *  Random puro reparte tamaños planos y produce vecinos idénticos de tamaño
- *  distinto al azar; esto da mayoría de individuos medianos y unos pocos
- *  extremos, que es la estructura de edades de un monte real. */
-function bellRange(r, min, max) {
-  const t = (r() + r() + r()) / 3;
-  return min + t * (max - min);
-}
-
-/** Inclinación natural: casi todos verticales, algunos levemente ladeados.
- *  Devuelve radianes. */
-function naturalTilt(r) {
-  const roll = r();
-  if (roll < 0.70) return r() * 0.035;          // 70% prácticamente a plomo
-  if (roll < 0.90) return 0.035 + r() * 0.055;  // 20% apenas inclinados
-  return 0.09 + r() * 0.07;                     // 10% con algo más de caída
-}
-
-/** Reparto en grupos con máscara de densidad y distancia mínima.
- *
- *  Tres mecanismos combinados, ninguno suficiente por sí solo:
- *   - semillas de grupo pesadas por la máscara → manchas y claros;
- *   - dispersión gaussiana alrededor de cada semilla → grupos de tamaño
- *     variable, no discos uniformes;
- *   - rechazo por distancia mínima (Poisson) → nada de pares pegados,
- *     que es lo que delata un random puro.
- *
- *  `solitaryRatio` reserva una fracción de individuos aislados: un monte
- *  solo de grupos se lee tan artificial como uno solo de individuos.
- */
-function clusteredScatter({
-  count,
-  rMin,
-  rMax,
-  density,
-  clusterCount,
-  clusterRadius,
-  minDist,
-  solitaryRatio = 0.18,
-  poiDist = 1.0,
-  waterMargin = 0.6,
-  rand,
-  maxAttempts = 60,
-}) {
-  const r = rand;
-  const points = [];
-  const accepted = [];
-
-  const valid = (x, z) => {
-    const rad = Math.hypot(x, z);
-    if (rad < rMin || rad > rMax) return false;
-    if (insideWater(x, z, waterMargin)) return false;
-    if (!farFromPOI(x, z, poiDist)) return false;
-    for (const [px, pz] of accepted) {
-      if ((px - x) * (px - x) + (pz - z) * (pz - z) < minDist * minDist) return false;
-    }
-    return true;
-  };
-
-  const push = (x, z) => {
-    points.push([x, z]);
-    accepted.push([x, z]);
-  };
-
-  // Semillas de grupo: se prueban posiciones y se aceptan con probabilidad
-  // proporcional a la máscara, así los grupos caen donde la ecología los
-  // pone y no donde cayó el dado.
-  const seeds = [];
-  let tries = 0;
-  while (seeds.length < clusterCount && tries < clusterCount * 200) {
-    tries++;
-    const a = r() * Math.PI * 2;
-    const rad = rMin + Math.sqrt(r()) * (rMax - rMin); // sqrt: área uniforme
-    const x = Math.cos(a) * rad;
-    const z = Math.sin(a) * rad;
-    if (insideWater(x, z, waterMargin)) continue;
-    if (r() < density(x, z)) seeds.push([x, z, 2 + Math.floor(r() * 6)]); // 2..7 por grupo
-  }
-
-  const solitaryTarget = Math.round(count * solitaryRatio);
-
-  // Individuos de grupo
-  for (const [sx, sz, size] of seeds) {
-    if (points.length >= count - solitaryTarget) break;
-    const spread = clusterRadius * (0.55 + r() * 0.9); // grupos de distinto tamaño
-    for (let i = 0; i < size; i++) {
-      let placed = false;
-      for (let a = 0; a < maxAttempts && !placed; a++) {
-        // Gaussiana aproximada: concentra cerca del centro del grupo y deja
-        // algún individuo en la periferia.
-        const g1 = (r() + r() + r() - 1.5) / 1.5;
-        const g2 = (r() + r() + r() - 1.5) / 1.5;
-        const x = sx + g1 * spread;
-        const z = sz + g2 * spread;
-        if (valid(x, z)) {
-          push(x, z);
-          placed = true;
-        }
-      }
-      if (points.length >= count - solitaryTarget) break;
-    }
-  }
-
-  // Individuos aislados, en cualquier punto donde la máscara lo permita
-  let solitaryTries = 0;
-  while (points.length < count && solitaryTries < count * 120) {
-    solitaryTries++;
-    const a = r() * Math.PI * 2;
-    const rad = rMin + Math.sqrt(r()) * (rMax - rMin);
-    const x = Math.cos(a) * rad;
-    const z = Math.sin(a) * rad;
-    if (r() > density(x, z) * 0.85) continue;
-    if (valid(x, z)) push(x, z);
-  }
-
-  return points;
-}
-
-// --- 6. Aplicar el relieve a la malla del suelo --------------------------
-// El displacement del material (0.15) sigue dando la rugosidad fina de la
-// textura; esto agrega la ondulación de escala grande, que es geometría real
-// y por lo tanto se puede muestrear desde JS para asentar la vegetación.
-{
-  const pos = groundGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, terrainHeight(pos.getX(i), pos.getZ(i)));
-  }
-  pos.needsUpdate = true;
-  groundGeo.computeVertexNormals();
-}
-
-// Compatibilidad: quedan sistemas (fauna, mariposas) que no son vegetación
-// y para los que un reparto disperso es correcto. Mantienen esta función.
 function scatterPositions(count, rMin, rMax, minDistFromPOI) {
   const points = [];
   let attempts = 0;
@@ -820,25 +406,8 @@ function scatterPositions(count, rMin, rMax, minDistFromPOI) {
 const dummy = new THREE.Object3D();
 
 // Árboles: tronco + copa irregular (silueta tipo espinillo/algarrobo)
-// Los árboles ya no se reparten al azar dentro de un anillo: siguen la
-// máscara de monte, que abre claros y junta manchas. `treeRng` es propio
-// para que cambiar la distribución no corra la secuencia del rng global y
-// mueva la fauna de sitio.
-const TREE_COUNT = 62;
-const treeRng = mulberry32(556071);
-const treePositions = clusteredScatter({
-  count: TREE_COUNT,
-  rMin: 3.2,
-  rMax: 17.5,
-  density: (x, z) => monteDensity(x, z) * poiClearing(x, z),
-  clusterCount: 14,
-  clusterRadius: 1.5,
-  minDist: 1.15,
-  solitaryRatio: 0.16, // unos diez ejemplares aislados: un monte solo de
-                       // grupos se lee tan artificial como uno solo de sueltos
-  poiDist: 2.0,
-  rand: treeRng,
-});
+const TREE_COUNT = 55;
+const treePositions = scatterPositions(TREE_COUNT, 4.5, 17, 1.4);
 
 const trunkGeo = new THREE.CylinderGeometry(0.05, 0.11, 1.6, 10);
 trunkGeo.translate(0, 0.8, 0);
@@ -869,61 +438,32 @@ treePositions.forEach(([x, z], i) => {
   // Escala UNIFORME del tronco (no desacoplar alto/ancho): así se mantiene
   // la proporción tronco-grueso/copa-baja típica del espinillo/algarrobo
   // en vez de troncos finos y altísimos ("efecto palillo").
-  // Escala en campana (mayoría medianos, pocos extremos) en vez de plana:
-  // un random uniforme produce demasiados gigantes y demasiados enanos, y
-  // eso es justo lo que hacía que dos árboles vecinos se vieran "iguales
-  // pero de distinto tamaño" en lugar de parecer de distinta edad.
-  let treeScale = bellRange(treeRng, 0.70, 1.35);
-  // Sesgo por mancha: la masa de monte tiene ejemplares más altos que los
-  // que crecen sueltos en el pastizal, donde el viento y el ganado los
-  // achican. Esto es lo que rompe la línea horizontal de copas.
-  const vigor = monteDensity(x, z);
-  treeScale *= 0.86 + vigor * 0.34;
-  const base = groundY(x, z);
-  const trunkTopY = base + 1.6 * treeScale;
+  const treeScale = 0.75 + rng() * 0.45; // tronco final: ~1.2 a ~2.3m
+  const trunkTopY = 1.6 * treeScale;
 
-  // Inclinación: casi todos a plomo, unos pocos ladeados. Nunca caídos.
-  const leanAngle = naturalTilt(treeRng);
-  const leanDir = treeRng() * Math.PI * 2;
-
-  dummy.position.set(x, base, z);
-  dummy.rotation.set(
-    Math.cos(leanDir) * leanAngle,
-    treeRng() * Math.PI * 2,
-    Math.sin(leanDir) * leanAngle
-  );
+  dummy.position.set(x, 0, z);
+  dummy.rotation.y = rng() * Math.PI * 2;
   dummy.scale.set(treeScale, treeScale, treeScale);
   dummy.updateMatrix();
   trunks.setMatrixAt(i, dummy.matrix);
 
-  // La copa no se apoya siempre en el mismo punto del tronco: un ejemplar
-  // joven la lleva alta y ceñida, uno viejo baja y abierta. Ese desfase es
-  // parte de lo que quiebra la línea de copas.
-  const crownDrop = 0.08 + treeRng() * 0.3 * treeScale;
-  const cy = trunkTopY - crownDrop;
-  const rotX = treeRng() * 0.25;
-  const rotY = treeRng() * Math.PI * 2;
-  const rotZ = treeRng() * 0.25;
-  // Copas anchas y chatas en los ejemplares expuestos, más ceñidas dentro
-  // de la mancha, donde compiten por luz.
-  const spreadBias = 1.18 - vigor * 0.22;
-  const sX = treeScale * spreadBias * (0.95 + treeRng() * 0.55);
-  const sY = treeScale * (0.55 + treeRng() * 0.42); // copa achatada, típica del espinillo
-  const sZ = treeScale * spreadBias * (0.95 + treeRng() * 0.55);
+  const cy = trunkTopY - 0.08;
+  const rotX = rng() * 0.25;
+  const rotY = rng() * Math.PI * 2;
+  const rotZ = rng() * 0.25;
+  const sX = treeScale * (1.1 + rng() * 0.6);
+  const sY = treeScale * (0.6 + rng() * 0.3); // copa achatada, típica del espinillo
+  const sZ = treeScale * (1.1 + rng() * 0.6);
   dummy.position.set(x, cy, z);
   dummy.rotation.set(rotX, rotY, rotZ);
   dummy.scale.set(sX, sY, sZ);
   dummy.updateMatrix();
   canopies.setMatrixAt(i, dummy.matrix);
-  treeCanopySway.push({ x, y: cy, z, rotX, rotY, rotZ, sX, sY, sZ, phase: treeRng() * Math.PI * 2 });
+  treeCanopySway.push({ x, y: cy, z, rotX, rotY, rotZ, sX, sY, sZ, phase: rng() * Math.PI * 2 });
 
   // Más oscura que las hojas: la masa de la copa hace de sombra interior y
   // deja que el follaje recortado sea lo que se lee en el contorno.
-  // Tono por ejemplar: dos vecinos de la misma especie nunca tienen el mismo
-  // verde. Es lo más barato que hay para romper la lectura de "copia pegada".
-  tmpColor
-    .lerpColors(espinilloGreen, algarroboGreen, treeRng())
-    .multiplyScalar(0.56 + treeRng() * 0.13);
+  tmpColor.lerpColors(espinilloGreen, algarroboGreen, rng()).multiplyScalar(0.62);
   canopies.setColorAt(i, tmpColor);
 });
 trunks.instanceMatrix.needsUpdate = true;
@@ -1230,33 +770,8 @@ const shrubBodyMeshes = [];
 const leafSway = [];
 const leafMeshes = [];
 
-// Rng propio del estrato arbustivo, para que reordenarlo no corra la
-// secuencia global y mueva la fauna.
-const shrubRng = mulberry32(880213);
-let shrubTotal = 0;
-let flowerTotal = 0;
-
 SHRUB_SPECIES.forEach((species, speciesIndex) => {
-  // Manchas, no ejemplares sueltos equidistantes. Cada especie desplaza su
-  // máscara (speciesIndex * 37) para que las cinco no ocupen exactamente
-  // los mismos parches: en un matorral real las especies se mezclan pero
-  // cada una tiene sus rincones.
-  const offset = speciesIndex * 37;
-  const positions = clusteredScatter({
-    count: species.count,
-    rMin: 1.6,
-    rMax: 11.0,
-    // Los arbustos no tapan la línea de visión hacia los personajes (miden
-    // menos de un metro), así que solo respetan el espacio de actividad a
-    // su alrededor, no el corredor visual.
-    density: (x, z) => matorralDensity(x + offset, z + offset),
-    clusterCount: 7,
-    clusterRadius: 0.85,
-    minDist: 0.55,
-    solitaryRatio: 0.22,
-    poiDist: 1.6,
-    rand: shrubRng,
-  });
+  const positions = scatterPositions(species.count, 1.8, 9.5, 1.0);
 
   const bodyMat = new THREE.MeshStandardMaterial({
     color: species.foliage,
@@ -1313,111 +828,64 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
   leafMeshes.push(leaves);
 
   let flowerIdx = 0;
-  let flowerCount = 0;
   let leafIdx = 0;
   positions.forEach(([x, z], i) => {
-    const s = bellRange(shrubRng, 0.55, 1.45);
-    const h = groundY(x, z) + s * 0.35;
-    const rotX = shrubRng() * Math.PI;
-    const rotY = shrubRng() * Math.PI;
-    const rotZ = shrubRng() * Math.PI;
-    const sY = s * (0.75 + shrubRng() * 0.5);
+    const s = 0.6 + rng() * 0.6;
+    const h = s * 0.35;
+    const rotX = rng() * Math.PI;
+    const rotY = rng() * Math.PI;
+    const rotZ = rng() * Math.PI;
+    const sY = s * (0.8 + rng() * 0.4);
     dummy.position.set(x, h, z);
     dummy.rotation.set(rotX, rotY, rotZ);
     dummy.scale.set(s, sY, s);
     dummy.updateMatrix();
     body.setMatrixAt(i, dummy.matrix);
-    shrubSway.push({ mesh: body, index: i, x, y: h, z, rotX, rotY, rotZ, s, sY, phase: shrubRng() * Math.PI * 2 });
+    shrubSway.push({ mesh: body, index: i, x, y: h, z, rotX, rotY, rotZ, s, sY, phase: rng() * Math.PI * 2 });
 
-    // Tono por ejemplar: dos arbustos vecinos del mismo modelo dejan de
-    // leerse como la misma copia pegada dos veces.
-    tmpColor.set(species.foliage).multiplyScalar(0.84 + shrubRng() * 0.32);
-    body.setColorAt(i, tmpColor);
-
-    // FLORES: antes llevaba tres cada arbusto, los 110 de la escena, y el
-    // campo parecía un cantero. Ahora solo florece el que cae dentro de una
-    // mancha de floración, y con menos flores. En un pastizal real la
-    // floración es estacional y localizada, no un tapiz continuo.
-    const patch = flowerPatch(x, z);
-    const blooms = patch > 0.3 ? (shrubRng() < 0.35 + patch * 0.4 ? 2 : 1) : 0;
-    for (let f = 0; f < blooms; f++) {
-      const ang = shrubRng() * Math.PI * 2;
-      const rad = s * (0.25 + shrubRng() * 0.2);
-      dummy.position.set(
-        x + Math.cos(ang) * rad,
-        h + s * 0.25 + shrubRng() * 0.15,
-        z + Math.sin(ang) * rad
-      );
-      dummy.rotation.set(shrubRng() * Math.PI, shrubRng() * Math.PI, shrubRng() * Math.PI);
-      const fs = 0.7 + shrubRng() * 0.6;
+    for (let f = 0; f < FLOWERS_PER_SHRUB; f++) {
+      const ang = rng() * Math.PI * 2;
+      const rad = s * (0.25 + rng() * 0.2);
+      dummy.position.set(x + Math.cos(ang) * rad, h + s * 0.25 + rng() * 0.15, z + Math.sin(ang) * rad);
+      dummy.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
+      const fs = 0.7 + rng() * 0.6;
       dummy.scale.set(fs, fs, fs);
       dummy.updateMatrix();
       flowers.setMatrixAt(flowerIdx++, dummy.matrix);
     }
-    // Las instancias que sobran del presupuesto se mandan fuera de cámara:
-    // una InstancedMesh siempre dibuja su `count`, y sin esto quedarían
-    // flores apiladas en el origen.
-    flowerCount = flowerIdx;
 
     const blobR = s * species.blobRadius;
     for (let l = 0; l < leafCfg.count; l++) {
-      const theta = shrubRng() * Math.PI * 2;
-      const phi = Math.acos(2 * shrubRng() - 1); // punto uniforme sobre la esfera
+      const theta = rng() * Math.PI * 2;
+      const phi = Math.acos(2 * rng() - 1); // punto uniforme sobre la esfera
       const lx = x + Math.sin(phi) * Math.cos(theta) * blobR * 1.02;
       const lz = z + Math.sin(phi) * Math.sin(theta) * blobR * 1.02;
       const ly = h + Math.cos(phi) * blobR * 0.9 * 1.02;
       const outwardYaw = Math.atan2(lx - x, lz - z);
       const tiltRange = (1 - leafCfg.uprightBias) * 1.4;
-      const lRotX = (shrubRng() - 0.5) * tiltRange;
-      const lRotY = outwardYaw + (shrubRng() - 0.5) * 0.6;
-      const lRotZ = (shrubRng() - 0.5) * tiltRange;
-      const ls = 0.75 + shrubRng() * 0.6;
+      const lRotX = (rng() - 0.5) * tiltRange;
+      const lRotY = outwardYaw + (rng() - 0.5) * 0.6;
+      const lRotZ = (rng() - 0.5) * tiltRange;
+      const ls = 0.75 + rng() * 0.6;
       dummy.position.set(lx, ly, lz);
       dummy.rotation.set(lRotX, lRotY, lRotZ);
       dummy.scale.set(ls, ls, ls);
       dummy.updateMatrix();
       leaves.setMatrixAt(leafIdx, dummy.matrix);
-      leafSway.push({ mesh: leaves, index: leafIdx, x: lx, y: ly, z: lz, rotX: lRotX, rotY: lRotY, rotZ: lRotZ, s: ls, phase: shrubRng() * Math.PI * 2 });
+      leafSway.push({ mesh: leaves, index: leafIdx, x: lx, y: ly, z: lz, rotX: lRotX, rotY: lRotY, rotZ: lRotZ, s: ls, phase: rng() * Math.PI * 2 });
       leafIdx++;
     }
   });
   body.instanceMatrix.needsUpdate = true;
-  // Solo se dibujan las flores realmente colocadas.
-  flowers.count = flowerCount;
-  shrubTotal += positions.length;
-  flowerTotal += flowerCount;
   flowers.instanceMatrix.needsUpdate = true;
-  if (body.instanceColor) body.instanceColor.needsUpdate = true;
   leaves.instanceMatrix.needsUpdate = true;
   scene.add(body, flowers, leaves);
 });
 
-// CAPA 3 — Gramíneas y herbáceas.
-// El salto visual entre el suelo desnudo y los arbustos era lo que más
-// delataba la escena: en un pastizal real no se ve tierra entre planta y
-// planta, se ve pasto. Ahora los mechones siguen la máscara de gramíneas,
-// que es alta donde el monte rarea y baja bajo el dosel.
-const GRASS_COUNT = 2600;
-const grassRng = mulberry32(447192);
-const grassPositions = clusteredScatter({
-  count: GRASS_COUNT,
-  rMin: 0.9,
-  rMax: 16.0,
-  density: (x, z) => grassDensity(x, z),
-  clusterCount: 90,
-  clusterRadius: 0.75,
-  minDist: 0.16,
-  solitaryRatio: 0.35, // el pasto sí es en buena parte disperso
-  poiDist: 0.55,
-  waterMargin: 0.25,
-  rand: grassRng,
-});
-// Se probó ensanchar el mechón a 4,8 cm para que leyera como mata y no como
-// aguja: un cono de tres caras a ese ancho se convierte en una pirámide de
-// cartón, peor que la púa. Con esta geometría el ancho no es la palanca; la
-// que funciona es la densidad. Queda apenas más grueso que el original
-// (2,5 cm) y el resto lo hace la cantidad.
-const grassGeo = new THREE.ConeGeometry(0.03, 0.48, 3);
+// Pastos altos: mechones dispersos en primer plano
+const GRASS_COUNT = 400;
+const grassPositions = scatterPositions(GRASS_COUNT, 1.2, 14, 0.6);
+const grassGeo = new THREE.ConeGeometry(0.025, 0.5, 3);
 grassGeo.translate(0, 0.25, 0);
 const grassMat = new THREE.MeshStandardMaterial({ color: 0x9a9a52, roughness: 1.0, flatShading: true });
 const grassTufts = new THREE.InstancedMesh(grassGeo, grassMat, grassPositions.length);
@@ -1426,81 +894,20 @@ grassTufts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 // El pasto es lo que más se nota balanceándose con el viento (más alto,
 // más liviano) — guarda transform base por mechón para el render loop.
 const grassSway = [];
-const grassDry = new THREE.Color(0x9a9a52);
-const grassWet = new THREE.Color(0x6f8a45); // el pasto de bañado es más verde
 grassPositions.forEach(([x, z], i) => {
-  // Más alto donde hay humedad, más raso y amarillo en el pastizal seco.
-  const moisture = soilMoisture(x, z);
-  const s = bellRange(grassRng, 0.60, 1.50) * (0.85 + moisture * 0.5);
-  const y = groundY(x, z);
-  const baseRotX = (grassRng() - 0.5) * 0.3;
-  const baseRotZ = (grassRng() - 0.5) * 0.3;
-  const rotY = grassRng() * Math.PI * 2;
-  grassSway.push({ x, y, z, s, baseRotX, baseRotZ, rotY, phase: grassRng() * Math.PI * 2 });
-  dummy.position.set(x, y, z);
+  const s = 0.6 + rng() * 0.8;
+  const baseRotX = (rng() - 0.5) * 0.3;
+  const baseRotZ = (rng() - 0.5) * 0.3;
+  const rotY = rng() * Math.PI * 2;
+  grassSway.push({ x, z, s, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
+  dummy.position.set(x, 0, z);
   dummy.rotation.set(baseRotX, rotY, baseRotZ);
   dummy.scale.set(1, s, 1);
   dummy.updateMatrix();
   grassTufts.setMatrixAt(i, dummy.matrix);
-  tmpColor.lerpColors(grassDry, grassWet, moisture).multiplyScalar(0.85 + grassRng() * 0.3);
-  grassTufts.setColorAt(i, tmpColor);
 });
 grassTufts.instanceMatrix.needsUpdate = true;
-if (grassTufts.instanceColor) grassTufts.instanceColor.needsUpdate = true;
 scene.add(grassTufts);
-
-// CAPA 4 — Cobertura del suelo.
-// Matitas rasas y hojarasca: no se miran, se notan cuando faltan. Son lo que
-// impide que el ojo vea "objeto apoyado sobre textura" y lo hace leer como
-// "planta creciendo en un suelo". Se densifican junto a los árboles, que es
-// donde de verdad se acumula la hojarasca.
-const COVER_COUNT = 3200;
-const coverRng = mulberry32(710044);
-const coverPositions = clusteredScatter({
-  count: COVER_COUNT,
-  rMin: 0.8,
-  rMax: 15.0,
-  density: (x, z) => clamp01(0.35 + grassDensity(x, z) * 0.5 + monteDensity(x, z) * 0.45),
-  clusterCount: 140,
-  clusterRadius: 0.6,
-  minDist: 0.1,
-  solitaryRatio: 0.45,
-  poiDist: 0.4,
-  waterMargin: 0.15,
-  rand: coverRng,
-});
-
-// Geometría mínima a propósito: son miles de instancias y nadie las mira de
-// cerca. Pero el primer intento usó conos altos y oscuros, y el resultado
-// fueron piedritas negras esparcidas por el campo: PEOR que el suelo
-// desnudo. La cobertura tiene que ser ancha y baja — una mata rasa, no una
-// púa — y de un tono cercano al del suelo, porque lo que debe aportar es
-// textura, no contraste.
-const coverGeo = new THREE.ConeGeometry(0.09, 0.055, 5);
-coverGeo.translate(0, 0.027, 0);
-const coverMat = new THREE.MeshStandardMaterial({
-  color: 0x9a9064,
-  roughness: 1.0,
-  flatShading: true,
-});
-const groundCover = new THREE.InstancedMesh(coverGeo, coverMat, coverPositions.length);
-const coverLitter = new THREE.Color(0x8e7d55); // hojarasca parda bajo los árboles
-const coverGreen = new THREE.Color(0x8f9760);
-coverPositions.forEach(([x, z], i) => {
-  const under = monteDensity(x, z);
-  const s = 0.7 + coverRng() * 1.1;
-  dummy.position.set(x, groundY(x, z), z);
-  dummy.rotation.set((coverRng() - 0.5) * 0.25, coverRng() * Math.PI * 2, (coverRng() - 0.5) * 0.25);
-  dummy.scale.set(s, s * (0.5 + coverRng() * 0.7), s);
-  dummy.updateMatrix();
-  groundCover.setMatrixAt(i, dummy.matrix);
-  tmpColor.lerpColors(coverGreen, coverLitter, under * 0.8).multiplyScalar(0.92 + coverRng() * 0.16);
-  groundCover.setColorAt(i, tmpColor);
-});
-groundCover.instanceMatrix.needsUpdate = true;
-if (groundCover.instanceColor) groundCover.instanceColor.needsUpdate = true;
-groundCover.receiveShadow = true;
-scene.add(groundCover);
 
 // --- Vegetación ribereña: totoras/juncos + sauce criollo -----------------
 // En una laguna real la orilla no es pasto corto: hay una franja densa de
@@ -1516,103 +923,32 @@ const reeds = new THREE.InstancedMesh(reedGeo, reedMat, REED_CLUMPS * REEDS_PER_
 reeds.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 reeds.castShadow = true;
 
-// Los mechones estaban repartidos en ángulos exactamente equidistantes
-// (c / REED_CLUMPS * 2π): un collar perfecto alrededor de la laguna. Eso es
-// lo que hacía que el borde se leyera como una línea AGUA | TIERRA. Ahora la
-// costa tiene tramos cerrados de totora y tramos abiertos de orilla limpia,
-// y el ancho de la franja varía punto a punto (reedBandWidth).
-const reedRng = mulberry32(228855);
 const reedSway = [];
 let reedIdx = 0;
-let reedPlaced = 0;
-
-for (let c = 0; c < REED_CLUMPS * 3 && reedPlaced < REED_CLUMPS; c++) {
-  const clumpAngle = reedRng() * Math.PI * 2;
-  // Máscara de costa: dónde hay juncal y dónde la orilla queda pelada.
-  const bank = fbm(shoreNoise, Math.cos(clumpAngle) * 3 + 40, Math.sin(clumpAngle) * 3 + 40, 3);
-  if (bank < 0.42) continue; // tramo de orilla abierta
-  reedPlaced++;
-
-  // Se plantan pisando el borde y se internan tierra adentro tanto como dé
-  // el ancho del juncal en ese punto de la costa.
-  const [ex, ez] = waterOutlinePoint(clumpAngle, 1.0);
-  const width = reedBandWidth(ex, ez);
-  const offset = (reedRng() - 0.35) * width; // algunos dentro del agua
-  const clumpScale = 1.0 + offset / WATER_RADIUS;
+for (let c = 0; c < REED_CLUMPS; c++) {
+  const clumpAngle = (c / REED_CLUMPS) * Math.PI * 2 + rng() * 0.2;
+  // los mechones se plantan pisando el borde del agua, como en la referencia
+  const clumpScale = 0.97 + rng() * 0.22;
   const [cx, cz] = waterOutlinePoint(clumpAngle, clumpScale);
-
   for (let r = 0; r < REEDS_PER_CLUMP; r++) {
-    const spread = 0.18 + width * 0.16;
-    const x = cx + (reedRng() - 0.5) * spread;
-    const z = cz + (reedRng() - 0.5) * spread;
-    // Los del borde exterior son más bajos: la totora se afina al alejarse
-    // del agua, no termina en un corte recto.
-    const d = Math.max(0, distanceToWater(x, z));
-    const falloff = 1 - smoothstep(0, width + 0.4, d);
-    const s = (0.5 + reedRng() * 0.7) * (0.45 + falloff * 0.75);
-    const baseRotX = (reedRng() - 0.5) * 0.25;
-    const baseRotZ = (reedRng() - 0.5) * 0.25;
-    const rotY = reedRng() * Math.PI * 2;
-    const y = d > 0.15 ? groundY(x, z) + 0.14 : 0.14;
-    dummy.position.set(x, y, z);
+    const spread = 0.24;
+    const x = cx + (rng() - 0.5) * spread;
+    const z = cz + (rng() - 0.5) * spread;
+    const s = 0.65 + rng() * 0.7;
+    const baseRotX = (rng() - 0.5) * 0.25;
+    const baseRotZ = (rng() - 0.5) * 0.25;
+    const rotY = rng() * Math.PI * 2;
+    dummy.position.set(x, 0.14, z);
     dummy.rotation.set(baseRotX, rotY, baseRotZ);
     dummy.scale.set(1, s, 1);
     dummy.updateMatrix();
     reeds.setMatrixAt(reedIdx, dummy.matrix);
-    reedSway.push({ index: reedIdx, x, y, z, s, baseRotX, baseRotZ, rotY, phase: reedRng() * Math.PI * 2 });
+    reedSway.push({ index: reedIdx, x, z, s, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
     reedIdx++;
   }
 }
-reeds.count = reedIdx;
 reeds.instanceMatrix.needsUpdate = true;
 scene.add(reeds);
-
-// Franja de humedal: gramíneas de suelo húmedo entre el juncal y el
-// pastizal. Es el eslabón que faltaba — sin ella se pasaba de totoras de
-// 80 cm a pasto seco de un metro a otro, y esa discontinuidad es lo que
-// leía como recorte. Va más baja que la totora y más verde que el pastizal.
-const SEDGE_COUNT = 900;
-const sedgeRng = mulberry32(339071);
-const sedgeGeo = new THREE.ConeGeometry(0.014, 0.34, 3);
-sedgeGeo.translate(0, 0.17, 0);
-const sedgeMat = new THREE.MeshStandardMaterial({
-  color: 0x6d8443,
-  roughness: 1.0,
-  flatShading: true,
-});
-const sedges = new THREE.InstancedMesh(sedgeGeo, sedgeMat, SEDGE_COUNT);
-const sedgeWet = new THREE.Color(0x5f8040);
-const sedgeDry = new THREE.Color(0x8b9053);
-let sedgeIdx = 0;
-for (let i = 0; i < SEDGE_COUNT * 12 && sedgeIdx < SEDGE_COUNT; i++) {
-  const a = sedgeRng() * Math.PI * 2;
-  const [ex, ez] = waterOutlinePoint(a, 1.0);
-  const width = reedBandWidth(ex, ez);
-  // Se reparte desde el borde del juncal hasta unos metros tierra adentro,
-  // con más densidad cerca del agua.
-  const d = width * 0.5 + Math.pow(sedgeRng(), 1.7) * 3.4;
-  const dir = Math.atan2(ez - WATER_CENTER[1], ex - WATER_CENTER[0]);
-  const jitter = (sedgeRng() - 0.5) * 0.7;
-  const x = ex + Math.cos(dir) * d + jitter;
-  const z = ez + Math.sin(dir) * d * WATER_Z_SQUASH + jitter;
-  if (insideWater(x, z, 0.05)) continue;
-  const moisture = soilMoisture(x, z);
-  if (sedgeRng() > moisture * 1.15) continue; // sigue la humedad, no el radio
-  const s = bellRange(sedgeRng, 0.6, 1.5);
-  dummy.position.set(x, groundY(x, z), z);
-  dummy.rotation.set((sedgeRng() - 0.5) * 0.3, sedgeRng() * Math.PI * 2, (sedgeRng() - 0.5) * 0.3);
-  dummy.scale.set(1, s, 1);
-  dummy.updateMatrix();
-  sedges.setMatrixAt(sedgeIdx, dummy.matrix);
-  tmpColor.lerpColors(sedgeDry, sedgeWet, moisture).multiplyScalar(0.88 + sedgeRng() * 0.24);
-  sedges.setColorAt(sedgeIdx, tmpColor);
-  sedgeIdx++;
-}
-sedges.count = sedgeIdx;
-sedges.instanceMatrix.needsUpdate = true;
-if (sedges.instanceColor) sedges.instanceColor.needsUpdate = true;
-sedges.castShadow = true;
-scene.add(sedges);
 
 // Sauces criollos: tronco inclinado sobre el agua + cortina de ramas
 // colgantes. Las ramas son planos finos con el pivote ARRIBA (en el punto
@@ -1652,7 +988,7 @@ for (let w = 0; w < WILLOW_COUNT; w++) {
   const trunkGeo = new THREE.CylinderGeometry(0.07, 0.15, height, 8);
   trunkGeo.translate(0, height / 2, 0);
   const trunk = new THREE.Mesh(trunkGeo, willowTrunkMat);
-  trunk.position.set(bx, groundY(bx, bz) + 0.1, bz);
+  trunk.position.set(bx, 0.1, bz);
   trunk.rotation.x = dirZ * lean;
   trunk.rotation.z = -dirX * lean;
   trunk.castShadow = true;
@@ -1661,7 +997,7 @@ for (let w = 0; w < WILLOW_COUNT; w++) {
   // copa desplazada por la inclinación del tronco
   const crownX = bx + dirX * height * Math.sin(lean);
   const crownZ = bz + dirZ * height * Math.sin(lean);
-  const crownY = groundY(bx, bz) + 0.1 + height * Math.cos(lean);
+  const crownY = 0.1 + height * Math.cos(lean);
   const crownSpread = 1.25 + rng() * 0.7;
 
   // Masa de follaje en la copa: sin esto el tronco quedaba pelado y las
@@ -1735,22 +1071,7 @@ const PAMPAS_CLUMPS = 26;
 const BLADES_PER_CLUMP = 16;
 const PLUMES_PER_CLUMP = 5;
 
-// La cortadera es planta de suelo húmedo y bordes: se agrupa donde hay
-// humedad y donde el monte no cierra, no repartida por toda la pradera.
-const pampasRng = mulberry32(602118);
-const pampasPositions = clusteredScatter({
-  count: PAMPAS_CLUMPS,
-  rMin: 2.4,
-  rMax: 15.0,
-  density: (x, z) =>
-    clamp01(soilMoisture(x, z) * 1.1 + 0.25) * (1 - monteDensity(x, z) * 0.7) * poiClearing(x, z),
-  clusterCount: 8,
-  clusterRadius: 1.1,
-  minDist: 0.9,
-  solitaryRatio: 0.3,
-  poiDist: 1.8,
-  rand: pampasRng,
-});
+const pampasPositions = scatterPositions(PAMPAS_CLUMPS, 3.0, 15, 1.4);
 
 // Hoja: lámina muy larga y angosta, con el pivote en la base para que el
 // viento la arquee desde donde nace.
@@ -1790,7 +1111,6 @@ let bladeIdx = 0;
 let plumeIdx = 0;
 
 pampasPositions.forEach(([cx, cz]) => {
-  const clumpBase = groundY(cx, cz);
   const clumpScale = 0.85 + rng() * 0.5;
 
   for (let b = 0; b < BLADES_PER_CLUMP; b++) {
@@ -1805,12 +1125,12 @@ pampasPositions.forEach(([cx, cz]) => {
     const baseRotX = Math.sin(a) * lean;
     const baseRotZ = -Math.cos(a) * lean;
     const rotY = rng() * Math.PI * 2;
-    dummy.position.set(x, clumpBase, z);
+    dummy.position.set(x, 0, z);
     dummy.rotation.set(baseRotX, rotY, baseRotZ);
     dummy.scale.set(1, len, 1);
     dummy.updateMatrix();
     pampasBlades.setMatrixAt(bladeIdx, dummy.matrix);
-    bladeSway.push({ index: bladeIdx, x, y: clumpBase, z, len, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
+    bladeSway.push({ index: bladeIdx, x, z, len, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
     bladeIdx++;
   }
 
@@ -1823,14 +1143,14 @@ pampasPositions.forEach(([cx, cz]) => {
     const baseRotX = (rng() - 0.5) * 0.18;
     const baseRotZ = (rng() - 0.5) * 0.18;
 
-    dummy.position.set(x, clumpBase, z);
+    dummy.position.set(x, 0, z);
     dummy.rotation.set(baseRotX, 0, baseRotZ);
     dummy.scale.set(1, stalkLen, 1);
     dummy.updateMatrix();
     pampasStalks.setMatrixAt(plumeIdx, dummy.matrix);
 
     // el penacho corona la vara, siguiendo su inclinación
-    const plumeY = clumpBase + stalkLen * Math.cos(baseRotX) + 0.22;
+    const plumeY = stalkLen * Math.cos(baseRotX) + 0.22;
     const plumeX = x - Math.sin(baseRotZ) * stalkLen;
     const plumeZ = z + Math.sin(baseRotX) * stalkLen;
     const plumeRotY = rng() * Math.PI * 2;
@@ -1874,24 +1194,9 @@ const ombuTrunkMat = makeBarkMaterial(0xa8947a);
 const ombuLeafMat = new THREE.MeshStandardMaterial({ color: 0x3f5f33, roughness: 0.88, flatShading: true });
 
 const ombuCrownLobes = [];
-// El ombú es solitario por definición: da la única sombra de la llanura y
-// crece aislado. Se planta lejos del monte cerrado, no dentro.
-const ombuRng = mulberry32(144902);
-const ombuPositions = clusteredScatter({
-  count: OMBU_COUNT,
-  rMin: 7.5,
-  rMax: 14.0,
-  density: (x, z) => clamp01(1 - monteDensity(x, z) * 1.4) * poiClearing(x, z),
-  clusterCount: 3,
-  clusterRadius: 0.3,
-  minDist: 6.0, // nunca dos ombúes juntos
-  solitaryRatio: 1.0,
-  poiDist: 3.0,
-  rand: ombuRng,
-});
+const ombuPositions = scatterPositions(OMBU_COUNT, 8, 13, 2.5);
 ombuPositions.forEach(([x, z], i) => {
-  const scale = bellRange(ombuRng, 0.9, 1.4);
-  const base = groundY(x, z);
+  const scale = 1.0 + rng() * 0.35;
 
   // base bulbosa: varios lóbulos que se funden, no un cono liso
   const baseLobes = 6;
@@ -1901,7 +1206,7 @@ ombuPositions.forEach(([x, z], i) => {
       makeOrganicGeometry(new THREE.IcosahedronGeometry(0.55, 2), 0.28, 200 + i * 10 + b),
       ombuTrunkMat
     );
-    lobe.position.set(x + Math.cos(a) * 0.42 * scale, base + 0.34 * scale, z + Math.sin(a) * 0.42 * scale);
+    lobe.position.set(x + Math.cos(a) * 0.42 * scale, 0.34 * scale, z + Math.sin(a) * 0.42 * scale);
     lobe.scale.set(scale * 0.9, scale * 0.75, scale * 0.9);
     lobe.castShadow = true;
     lobe.receiveShadow = true;
@@ -1911,7 +1216,7 @@ ombuPositions.forEach(([x, z], i) => {
     makeOrganicGeometry(new THREE.IcosahedronGeometry(0.8, 2), 0.2, 260 + i),
     ombuTrunkMat
   );
-  baseCore.position.set(x, base + 0.5 * scale, z);
+  baseCore.position.set(x, 0.5 * scale, z);
   baseCore.scale.set(scale, scale * 0.85, scale);
   baseCore.castShadow = true;
   scene.add(baseCore);
@@ -1921,12 +1226,12 @@ ombuPositions.forEach(([x, z], i) => {
   const ombuTrunkGeo = new THREE.CylinderGeometry(0.3 * scale, 0.55 * scale, trunkH, 9);
   ombuTrunkGeo.translate(0, trunkH / 2, 0);
   const ombuTrunk = new THREE.Mesh(ombuTrunkGeo, ombuTrunkMat);
-  ombuTrunk.position.set(x, base + 0.75 * scale, z);
+  ombuTrunk.position.set(x, 0.75 * scale, z);
   ombuTrunk.castShadow = true;
   scene.add(ombuTrunk);
 
   // copa ancha y baja, hecha de varios lóbulos de follaje
-  const crownY = base + 0.75 * scale + trunkH;
+  const crownY = 0.75 * scale + trunkH;
   const crownLobes = 7;
   for (let c = 0; c < crownLobes; c++) {
     const a = (c / crownLobes) * Math.PI * 2 + rng() * 0.4;
@@ -2026,7 +1331,7 @@ for (let c = 0; c < CEIBO_COUNT; c++) {
   // de un cilindro recto
   let segX = bx;
   let segZ = bz;
-  let segY = groundY(bx, bz) + 0.05;
+  let segY = 0.05;
   let tiltX = (rng() - 0.5) * 0.3;
   let tiltZ = (rng() - 0.5) * 0.3;
   const segments = 3;
@@ -2157,29 +1462,15 @@ const swayQuat = new THREE.Quaternion();
 const swayAxis = new THREE.Vector3();
 const composedQuat = new THREE.Quaternion();
 
-// El butiá forma palmares: aparece en grupos, no salpicado de a uno.
-const butiaRng = mulberry32(318870);
-const butiaPositions = clusteredScatter({
-  count: BUTIA_COUNT,
-  rMin: 6.5,
-  rMax: 14.5,
-  density: (x, z) => clamp01(0.4 + grassDensity(x, z) * 0.8) * poiClearing(x, z),
-  clusterCount: 2,
-  clusterRadius: 1.6,
-  minDist: 2.2,
-  solitaryRatio: 0.25,
-  poiDist: 2.6,
-  rand: butiaRng,
-});
+const butiaPositions = scatterPositions(BUTIA_COUNT, 7, 14, 2.2);
 butiaPositions.forEach(([x, z], p) => {
-  const butiaBase = groundY(x, z);
   const scale = 0.9 + rng() * 0.4;
   const trunkH = (3.2 + rng() * 1.4) * scale;
 
   const butiaTrunkGeo = new THREE.CylinderGeometry(0.19 * scale, 0.26 * scale, trunkH, 9);
   butiaTrunkGeo.translate(0, trunkH / 2, 0);
   const butiaTrunk = new THREE.Mesh(butiaTrunkGeo, butiaTrunkMat);
-  butiaTrunk.position.set(x, butiaBase + 0.05, z);
+  butiaTrunk.position.set(x, 0.05, z);
   butiaTrunk.castShadow = true;
   scene.add(butiaTrunk);
 
@@ -2187,7 +1478,7 @@ butiaPositions.forEach(([x, z], p) => {
   const rings = Math.floor(trunkH / 0.32);
   for (let r = 0; r < rings; r++) {
     const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.23 * scale, 0.23 * scale, 0.1, 9), butiaTrunkMat);
-    ring.position.set(x, butiaBase + 0.05 + 0.2 + r * 0.32, z);
+    ring.position.set(x, 0.05 + 0.2 + r * 0.32, z);
     ring.scale.set(1, 1, 1);
     scene.add(ring);
   }
@@ -2310,46 +1601,26 @@ for (const band of FAR_BANDS) {
   const farTrunks = new THREE.InstancedMesh(farTrunkGeo, trunkMatFar, band.count);
   const farCanopies = new THREE.InstancedMesh(farCanopyGeo, canopyMatFar, band.count);
 
-  // Índice propio: las posiciones descartadas por la máscara del horizonte
-  // no pueden dejar huecos, o la InstancedMesh dibujaría esas instancias
-  // amontonadas en el origen de la escena.
-  let placed = 0;
-  for (let i = 0; i < band.count * 2 && placed < band.count; i++) {
+  for (let i = 0; i < band.count; i++) {
     const a = rng() * Math.PI * 2;
-    // La profundidad también sigue la máscara: donde hay mancha, el monte se
-    // mete hacia adentro; donde no, retrocede. Sin esto las tres bandas se
-    // superponen y rellenan los huecos de las otras, y el horizonte vuelve
-    // a ser una empalizada continua.
-    const depth = fbm(monteNoise, Math.cos(a) * 4 + 700, Math.sin(a) * 4 + 700, 2);
-    const r = band.rMin + (0.1 + 0.9 * depth) * (band.rMax - band.rMin);
+    const r = band.rMin + rng() * (band.rMax - band.rMin);
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
-    // La banda se leía como un cinturón parejo de árboles idénticos. Una
-    // máscara de ruido a lo largo del horizonte abre huecos de campo
-    // abierto y junta manchas de monte, que es lo que se ve desde la
-    // pradera: el horizonte no es una empalizada continua.
-    const horizon = fbm(monteNoise, Math.cos(a) * 6 + 400, Math.sin(a) * 6 + 400, 3);
-    if (horizon < 0.47) continue;
-    // Altura en campana y modulada por la máscara: las manchas densas son
-    // más altas que los grupos ralos del borde.
-    const h = bellRange(rng, band.hMin, band.hMax) * (0.78 + horizon * 0.45);
+    const h = band.hMin + rng() * (band.hMax - band.hMin);
 
     dummy.position.set(x, 0, z);
     dummy.rotation.set(0, rng() * Math.PI * 2, 0);
     dummy.scale.set(1, h * 0.55, 1);
     dummy.updateMatrix();
-    farTrunks.setMatrixAt(placed, dummy.matrix);
+    farTrunks.setMatrixAt(i, dummy.matrix);
 
     const spread = h * (0.42 + rng() * 0.22);
     dummy.position.set(x, h * 0.62, z);
     dummy.rotation.set(rng() * 0.4, rng() * Math.PI * 2, rng() * 0.4);
     dummy.scale.set(spread, spread * (0.6 + rng() * 0.3), spread);
     dummy.updateMatrix();
-    farCanopies.setMatrixAt(placed, dummy.matrix);
-    placed++;
+    farCanopies.setMatrixAt(i, dummy.matrix);
   }
-  farTrunks.count = placed;
-  farCanopies.count = placed;
   farTrunks.instanceMatrix.needsUpdate = true;
   farCanopies.instanceMatrix.needsUpdate = true;
   scene.add(farTrunks, farCanopies);
@@ -2960,54 +2231,10 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 1.6, 4);
 cameraRig.add(camera);
 
-// --- Cámaras de control de calidad (solo en desarrollo) -----------------
-// Puntos de vista fijos para comparar antes/después siempre desde el mismo
-// sitio. Sin esto, dos capturas "del mismo lugar" nunca lo son y cualquier
-// comparación es una impresión, no una medición.
-const QC_CAMERAS = {
-  // Nivel del ojo desde el punto de vista real del visor: es la única que
-  // representa lo que verá quien use las gafas.
-  QC_GROUND: { pos: [0, 1.6, 4], look: [0, 1.4, -6] },
-  // Plano medio elevado: sirve para juzgar manchas, claros y densidad.
-  QC_MID: { pos: [-6, 3.2, 8], look: [2, 1.0, -2] },
-  // Vista alta: el perfil de copas y el reparto general del monte.
-  QC_HIGH: { pos: [0, 9, 14], look: [1, 1.0, -2] },
-  // Laguna: la transición agua → juncal → humedal → pastizal.
-  QC_WATER: { pos: [1.5, 1.5, 6.5], look: [7, 0.3, 4] },
-};
-
-if (import.meta.env.DEV) {
-  window.__cam = camera;
-  window.__qc = QC_CAMERAS;
-  // Censo de la escena, para el informe: contar a mano lo que genera un
-  // sistema procedural es como se cuelan los errores.
-  window.__census = () => {
-    const census = { draws: 0, instances: 0, porTipo: {} };
-    scene.traverse((o) => {
-      if (!o.isMesh) return;
-      census.draws++;
-      const n = o.isInstancedMesh ? o.count : 1;
-      census.instances += n;
-      const key = o.isInstancedMesh ? o.geometry.type + ":inst" : o.geometry.type;
-      census.porTipo[key] = (census.porTipo[key] || 0) + n;
-    });
-    return census;
-  };
-  window.__vegCounts = () => ({
-    arboles_monte: treePositions.length,
-    arbustos: shrubTotal,
-    flores: flowerTotal,
-    gramineas: grassPositions.length,
-    cobertura_suelo: coverPositions.length,
-    juncos: reeds.count,
-    humedal_gramineas: sedges.count,
-    cortadera_matas: pampasPositions.length,
-    ombues: ombuPositions.length,
-    ceibos: CEIBO_COUNT,
-    sauces: WILLOW_COUNT,
-    butias: butiaPositions.length,
-  });
-}
+// Gancho de inspección: permite recolocar la cámara desde una herramienta de
+// captura para revisar cualquier rincón de la escena sin tocar el código.
+// `import.meta.env.DEV` es false en el build, así que no viaja al visor.
+if (import.meta.env.DEV) window.__cam = camera;
 
 // --- Marcadores de puntos de interés (placeholders) -------------------
 // Figuras humanas (Vaimaca Perú, Abayubá, Guyunusa) pospuestas — ver README.
@@ -3169,7 +2396,7 @@ renderer.setAnimationLoop((time) => {
   for (let i = 0; i < grassSway.length; i++) {
     const g = grassSway[i];
     const sway = Math.sin(t * 1.1 + g.phase) * 0.14 + Math.sin(t * 2.6 + g.phase * 1.7) * 0.05;
-    dummy.position.set(g.x, g.y, g.z);
+    dummy.position.set(g.x, 0, g.z);
     dummy.rotation.set(g.baseRotX + sway, g.rotY, g.baseRotZ + sway * 0.6);
     dummy.scale.set(1, g.s, 1);
     dummy.updateMatrix();
@@ -3204,7 +2431,7 @@ renderer.setAnimationLoop((time) => {
   // Juncos/totoras: altos y flexibles, se mueven más que el pasto.
   for (const rd of reedSway) {
     const sway = Math.sin(t * 1.0 + rd.phase) * 0.2 + Math.sin(t * 2.2 + rd.phase * 1.5) * 0.07;
-    dummy.position.set(rd.x, rd.y, rd.z);
+    dummy.position.set(rd.x, 0.14, rd.z);
     dummy.rotation.set(rd.baseRotX + sway, rd.rotY, rd.baseRotZ + sway * 0.7);
     dummy.scale.set(1, rd.s, 1);
     dummy.updateMatrix();
@@ -3228,7 +2455,7 @@ renderer.setAnimationLoop((time) => {
   // que da la lectura de "campo con viento" a media distancia.
   for (const bl of bladeSway) {
     const sway = Math.sin(t * 1.15 + bl.phase) * 0.17 + Math.sin(t * 2.5 + bl.phase * 1.6) * 0.06;
-    dummy.position.set(bl.x, bl.y, bl.z);
+    dummy.position.set(bl.x, 0, bl.z);
     dummy.rotation.set(bl.baseRotX + sway, bl.rotY, bl.baseRotZ + sway * 0.7);
     dummy.scale.set(1, bl.len, 1);
     dummy.updateMatrix();

@@ -72,6 +72,33 @@ Decisiones que importan:
 - **Ombú, ceibo y sauce también tienen hojas recortadas.** Eran masas de *flat shading* que a un metro se leían como piedras verdes. Ahora reparten tarjetas sobre la superficie de sus lóbulos de follaje, con densidad y tamaño ajustados por especie: la copa del ceibo queda rala a propósito, porque es esa transparencia la que deja ver sus flores rojas.
 - **Un generador aleatorio propio por sistema de hojas.** Si sus miles de llamadas salieran del `rng` global, correrían toda la secuencia posterior y cambiarían dónde caen árboles, palmeras y fauna (pasó: un butiá apareció plantado delante de la cámara).
 
+### Distribución ecológica de la vegetación
+
+Lo que hacía que el paisaje se leyera como procedural no era la cantidad de plantas ni su calidad: era que **todas salían de un `random` uniforme dentro de un anillo**. Eso reparte con densidad constante y sin correlación entre vecinos, que es lo único que la naturaleza nunca hace. Un campo real se organiza por agua, suelo y competencia, y eso produce manchas, claros y gradientes.
+
+El sustrato nuevo tiene cuatro piezas, en `main.js`:
+
+1. **Ruido de valor 2D con fBm** (`makeNoise2D` + `fbm`), determinista y con semilla propia. De él cuelga todo lo demás.
+2. **Campo de altura** (`terrainHeight`): ondulación de unos 40 cm en 30 m — 1,3% de pendiente, ondulación de pampa, no colinas. La malla del suelo se desplaza de verdad y `groundY(x, z)` permite asentar cada instancia encima.
+3. **Zonas ecológicas** con fronteras irregulares: agua, juncal, humedal, pastizal húmedo, pastizal abierto, matorral, monte y claro. Las máscaras (`monteDensity`, `matorralDensity`, `grassDensity`, `soilMoisture`) mezclan distancia al agua con ruido, así que ningún límite es un círculo ni una recta.
+4. **`clusteredScatter`**: semillas de grupo pesadas por la máscara, dispersión gaussiana alrededor de cada semilla y rechazo por distancia mínima. Ninguno de los tres mecanismos alcanza solo — el tercero es el que evita los pares pegados que delatan un random puro.
+
+Decisiones que importan:
+
+- **La escala va en campana** (`bellRange`, promedio de tres uniformes), no plana. Un uniforme produce demasiados gigantes y demasiados enanos; la campana da mayoría de medianos y pocos extremos, que es la estructura de edades de un monte real.
+- **El monte no es una empalizada.** La altura de cada árbol se modula por la densidad de su mancha, la copa se apoya a distinta altura del tronco y el tono verde varía por ejemplar. Es lo que rompe la línea horizontal de copas.
+- **El juncal estaba repartido en ángulos exactamente equidistantes** (`c / REED_CLUMPS * 2π`): un collar perfecto alrededor de la laguna. Ahora la costa tiene tramos cerrados de totora y tramos de orilla limpia, y el ancho de la franja varía punto a punto.
+- **La orilla de barro era un offset uniforme del agua (1,3×)**, que se lee como una junta de goma. Ahora el ancho oscila entre 1,08× y 1,55×, así que hay playas anchas y tramos donde el pasto llega al agua.
+- **Las flores pasaron de 330 a 91**, y solo florece el arbusto que cae dentro de una mancha de floración. Antes llevaba tres cada uno de los 110 arbustos y el campo parecía un cantero.
+- **Un claro es un claro de árboles, no un desierto.** La densidad de gramíneas tiene un piso: sin él, las zonas de baja densidad quedaban de tierra pelada, que es exactamente el aspecto artificial que se quería quitar.
+
+Dos intentos que se probaron y se descartaron, con el motivo en el código:
+
+- La cobertura del suelo se hizo primero con conos altos y oscuros: el resultado fueron **piedritas negras esparcidas por el campo**, peor que el suelo desnudo. Tiene que ser ancha, baja y de un tono cercano al del suelo.
+- Se ensanchó el mechón de pasto a 4,8 cm para que leyera como mata: un cono de tres caras a ese ancho **se convierte en una pirámide de cartón**. Con esta geometría el ancho no es la palanca; la densidad sí.
+
+Cámaras de control en `QC_CAMERAS` (`QC_GROUND`, `QC_MID`, `QC_HIGH`, `QC_WATER`), expuestas en `window.__qc` solo en desarrollo, para que dos capturas "del mismo lugar" lo sean de verdad y la comparación sea medible.
+
 ### Especies emblemáticas de la pampa
 
 Incorporadas a partir de una lista de referencia de modelos 3D comerciales, pero **modeladas procedimentalmente**: los modelos enlazados no eran utilizables (Sketchfab exige login para descargar, ArtStation Marketplace es de pago, y los escaneos "ultra HQ" con texturas 16K pesan cientos de MB, inviables para WebXR en un visor autónomo). Lo aprovechable era la selección de especies:
