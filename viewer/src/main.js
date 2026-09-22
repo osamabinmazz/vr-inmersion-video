@@ -477,41 +477,81 @@ function shoreWidthAt(angle) {
   return 1.08 + Math.max(0, Math.min(1, n)) * 0.47;
 }
 
-const shoreShape = new THREE.Shape();
-for (let i = 0; i <= WATER_SEGMENTS; i++) {
-  const a = (i / WATER_SEGMENTS) * Math.PI * 2;
-  const r = waterRadiusAt(a) * shoreWidthAt(a);
-  const x = Math.cos(a) * r;
-  const y = Math.sin(a) * r;
-  if (i === 0) shoreShape.moveTo(x, y);
-  else shoreShape.lineTo(x, y);
-}
-const shoreHole = new THREE.Path();
-for (let i = 0; i <= WATER_SEGMENTS; i++) {
-  const a = (i / WATER_SEGMENTS) * Math.PI * 2;
-  const r = waterRadiusAt(a) * 0.98; // un poco por dentro del agua: evita z-fighting en el borde
-  const x = Math.cos(a) * r;
-  const y = Math.sin(a) * r;
-  if (i === 0) shoreHole.moveTo(x, y);
-  else shoreHole.lineTo(x, y);
-}
-shoreShape.holes.push(shoreHole);
+// Anillo construido a mano, con FILAS concéntricas de vértices.
+//
+// Antes era una ShapeGeometry con agujero: 129 vértices en el contorno
+// interior, 129 en el exterior y ninguno en medio. Eso anulaba el gradiente
+// de humedad — la GPU interpola en línea recta entre los dos bordes, así que
+// cualquier curva de secado solo actuaba en los extremos y media franja
+// salía siempre tirando a tierra seca. Por eso la orilla se veía pálida
+// aunque el barro junto al agua fuera oscuro.
+//
+// Con varias filas, la curva se representa de verdad. Las filas están más
+// juntas cerca del agua, que es donde el color cambia más rápido.
+//
+// Convención de coordenadas: la misma que tenía la ShapeGeometry después de
+// rotateX(-90°) y del achatamiento — (x, 0, -y·achat) —, para que el agua,
+// la orilla y el bloque que pinta la humedad sigan hablando del mismo
+// ángulo.
+const SHORE_ROWS = 8;
 
-const shoreGeo = new THREE.ShapeGeometry(shoreShape, 1);
-shoreGeo.rotateX(-Math.PI / 2);
-shoreGeo.scale(1, 1, WATER_Z_SQUASH);
+function shoreRowScale(row, width) {
+  if (row === 0) return 0.98; // bajo la lámina: evita una rendija en el borde
+  const t = (row - 1) / (SHORE_ROWS - 2);
+  return 1.0 + (width - 1.0) * Math.pow(t, 1.35);
+}
+
+const shoreGeo = new THREE.BufferGeometry();
+{
+  const cols = WATER_SEGMENTS + 1; // se repite la costura para cerrar limpio
+  const positions = new Float32Array(cols * SHORE_ROWS * 3);
+  for (let i = 0; i < cols; i++) {
+    const a = (i / WATER_SEGMENTS) * Math.PI * 2;
+    const rBase = waterRadiusAt(a);
+    const width = shoreWidthAt(a);
+    for (let k = 0; k < SHORE_ROWS; k++) {
+      const r = rBase * shoreRowScale(k, width);
+      const v = (i * SHORE_ROWS + k) * 3;
+      positions[v] = Math.cos(a) * r;
+      positions[v + 1] = 0;
+      positions[v + 2] = -Math.sin(a) * r * WATER_Z_SQUASH;
+    }
+  }
+  const index = [];
+  for (let i = 0; i < WATER_SEGMENTS; i++) {
+    for (let k = 0; k < SHORE_ROWS - 1; k++) {
+      const a0 = i * SHORE_ROWS + k;
+      const a1 = (i + 1) * SHORE_ROWS + k;
+      const b0 = a0 + 1;
+      const b1 = a1 + 1;
+      // Orden elegido para que las caras miren hacia +Y (verificado con las
+      // normales calculadas: una orilla mirando al suelo no recibe luz).
+      index.push(a0, b0, a1, a1, b0, b1);
+    }
+  }
+  shoreGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  shoreGeo.setIndex(index);
+  shoreGeo.computeVertexNormals();
+}
 
 // Barro húmedo, no arena seca: más oscuro y más saturado que antes, porque
 // un borde claro se recorta contra el pastizal y vuelve a marcar la línea
 // que se quiere disimular.
-const shoreMat = new THREE.MeshStandardMaterial({
+// Lambert y no Standard, por una medición y no por gusto. Con píxeles
+// leídos de la captura: los vértices de la orilla son marrón oscuro (sin
+// luz, ≈68,52,28), pero iluminada subía a ≈97,77,65 — el doble de brillo
+// que la tierra de al lado y con el azul casi triplicado. Ese término
+// blanquecino no dependía del albedo ni del mapa de entorno (con
+// envMapIntensity en 0 no cambiaba): era el especular de la luz directa en
+// ángulo rasante, que en MeshStandardMaterial no se puede apagar.
+//
+// El suelo de al lado no lo sufre porque su mapa ARM le da roughness ~1 y
+// oclusión. El barro opaco de una orilla no tiene brillo apreciable desde
+// este ángulo, así que un material solo difuso es a la vez el más fiel y el
+// más barato — también en el visor.
+const shoreMat = new THREE.MeshLambertMaterial({
   color: 0xffffff,
   vertexColors: true,
-  // El barro es rugoso, pero el empapado de la orilla algo menos. Sin mapa
-  // por vértice se toma un valor intermedio y el gradiente de color hace el
-  // resto del trabajo.
-  roughness: 0.92,
-  metalness: 0.0,
 });
 const shore = new THREE.Mesh(shoreGeo, shoreMat);
 shore.position.set(WATER_CENTER[0], 0.162, WATER_CENTER[1]); // apenas bajo el agua, sobre el suelo
@@ -2711,7 +2751,10 @@ scene.add(butiaLeaflets);
   // transición de humedad del brief, resuelta con material y sin agregar un
   // solo objeto.
 {
-  const WET_MUD = new THREE.Color(0x3E3220);
+  // Un punto más claro que antes: con Lambert ya no hay especular que lo
+  // levante, y el borde pegado al agua quedaba prácticamente negro. El barro
+  // empapado es oscuro, pero conserva tono.
+  const WET_MUD = new THREE.Color(0x4C3D29);
   const DAMP    = new THREE.Color(0x5A4930);
   const pos = shoreGeo.attributes.position;
   const cols = new Float32Array(pos.count * 3);
