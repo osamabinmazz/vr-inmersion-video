@@ -49,6 +49,25 @@ La escena incluye fauna procedimental (mismo criterio que la vegetación — sin
 - **Capibara con más definición**: hocico rectangular achatado + fosas nasales (rasgo distintivo real del capibara, ausente en el modelo anterior) y más segmentos en cuerpo/cabeza/orejas.
 - **Aves con cola**: se agregó una cola en abanico, visible tanto en vuelo como si se posaran, para leer mejor la silueta a distancia.
 
+### Texturas fotográficas y hojas con alfa
+
+Cuatro rondas seguidas de subir polígonos no volvieron realista la vegetación, porque el problema no era la densidad de malla: era que **todo era color plano**. La corteza no tenía corteza y las hojas eran geometría opaca.
+
+Texturas CC0 de [ambientCG](https://ambientcg.com) (descarga directa, como Poly Haven — las baja `scripts/download-assets.sh`):
+
+- **Corteza** (`Bark014`, 1K: color + normal + roughness) en todos los troncos — espinillo, ombú, ceibo, sauce y butiá. Es la misma textura teñida distinto por especie, lo que cuesta un solo juego de mapas en memoria.
+- **Hoja con canal alfa** (`Leaf001`, 1K: color + opacity + roughness). Es una hoja escaneada de verdad, con venación y borde aserrado. La imagen trae **dos** hojas (haz y envés), así que clonando la textura con distinto `offset.x` se obtienen dos variantes sin costo de memoria extra.
+
+Decisiones que importan:
+
+- **`alphaTest` en vez de `transparent`.** Da recorte duro, no necesita ordenar por profundidad y no produce los halos ni el parpadeo que arruinan la vegetación transparente en VR.
+- **Translucidez aproximada.** La hoja real deja pasar la luz y a contraluz se enciende; un `transmission` real sería carísimo en un visor autónomo, así que se simula con una emisión tenue del propio verde.
+- **La proporción la fija la foto, no la especie.** Si el plano usara el aspecto de cada contorno (la carqueja era casi 9:1) la hoja saldría aplastada.
+- **Las hojas de copa escalan con el árbol.** Con un tamaño fijo, los ejemplares grandes se seguían leyendo como masas lisas porque sus hojas quedaban diminutas en proporción. La masa de la copa quedó además más oscura: pasa a hacer de sombra interior y deja que el follaje recortado defina el contorno.
+- **Generador aleatorio propio para las hojas.** Sus ~21.000 llamadas, si salieran del `rng` global, correrían toda la secuencia posterior y cambiarían dónde caen árboles, palmeras y fauna (pasó: un butiá apareció plantado delante de la cámara).
+
+Lo que se perdió en el cambio: los arbustos ya no tienen una silueta de hoja distinta por especie, porque todas usan la misma foto. La diferenciación ahora viene del tamaño, el tinte y la densidad.
+
 ### Especies emblemáticas de la pampa
 
 Incorporadas a partir de una lista de referencia de modelos 3D comerciales, pero **modeladas procedimentalmente**: los modelos enlazados no eran utilizables (Sketchfab exige login para descargar, ArtStation Marketplace es de pago, y los escaneos "ultra HQ" con texturas 16K pesan cientos de MB, inviables para WebXR en un visor autónomo). Lo aprovechable era la selección de especies:

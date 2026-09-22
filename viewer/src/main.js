@@ -83,6 +83,76 @@ function loadTiled(path, colorSpace) {
   return t;
 }
 
+// --- Texturas fotográficas de corteza y hoja (CC0, ambientCG) -------------
+// El salto de calidad de la vegetación no vino de más polígonos sino de acá:
+// corteza real en los troncos y hojas recortadas por canal alfa a partir de
+// una foto de hoja escaneada (Leaf001 trae haz y envés en la misma imagen,
+// así que se puede variar cuál se usa moviendo el offset UV).
+const barkColor = loadTiled("/assets/textures/bark/color.jpg", THREE.SRGBColorSpace);
+const barkNormal = loadTiled("/assets/textures/bark/normal.jpg");
+const barkRough = loadTiled("/assets/textures/bark/rough.jpg");
+for (const t of [barkColor, barkNormal, barkRough]) t.repeat.set(1, 2);
+
+function makeBarkMaterial(tint = 0xffffff) {
+  return new THREE.MeshStandardMaterial({
+    color: tint, // tiñe la misma corteza para diferenciar especies
+    map: barkColor,
+    normalMap: barkNormal,
+    roughnessMap: barkRough,
+    roughness: 1.0,
+    metalness: 0.0,
+  });
+}
+
+const leafColorTex = texLoader.load("/assets/textures/leaf/color.png");
+leafColorTex.colorSpace = THREE.SRGBColorSpace;
+const leafAlphaTex = texLoader.load("/assets/textures/leaf/opacity.png");
+const leafRoughTex = texLoader.load("/assets/textures/leaf/rough.png");
+for (const t of [leafColorTex, leafAlphaTex, leafRoughTex]) {
+  t.anisotropy = maxAnisotropy;
+  // La textura trae DOS hojas lado a lado: se toma media imagen para quedarse
+  // con una sola.
+  t.repeat.set(0.5, 1);
+}
+
+/** Alpha card de hoja: plano recortado por el mapa de opacidad.
+ *
+ * alphaTest en vez de transparent: da recorte duro, no necesita ordenar por
+ * profundidad y no produce los halos ni el parpadeo que arruinan la
+ * vegetación transparente en VR.
+ */
+// Proporción de la hoja dentro de su media textura: alto / ancho. Si se
+// ignora, el plano estira la foto y la hoja sale deformada.
+const LEAF_ASPECT = 1.55;
+
+function makeLeafCardMaterial(tint, variant = 0) {
+  // Clonar comparte la imagen en memoria pero da offset propio, así cada
+  // especie puede usar una de las dos hojas de la foto.
+  const offsetX = variant === 0 ? 0.0 : 0.5;
+  const map = leafColorTex.clone();
+  const alphaMap = leafAlphaTex.clone();
+  const roughnessMap = leafRoughTex.clone();
+  for (const t of [map, alphaMap, roughnessMap]) {
+    t.offset.x = offsetX;
+    t.needsUpdate = true;
+  }
+  return new THREE.MeshStandardMaterial({
+    color: tint,
+    map,
+    alphaMap,
+    roughnessMap,
+    alphaTest: 0.5,
+    side: THREE.DoubleSide,
+    roughness: 0.85,
+    metalness: 0.0,
+    // Aproximación barata a la translucidez: la hoja real deja pasar luz y a
+    // contraluz se enciende. Un transmission real sería carísimo en VR, así
+    // que se simula con una emisión tenue del propio verde.
+    emissive: tint,
+    emissiveIntensity: 0.12,
+  });
+}
+
 const groundDiff = loadTiled("/assets/textures/grass_ground/diff_4k.jpg", THREE.SRGBColorSpace);
 const groundNormal = loadTiled("/assets/textures/grass_ground/nor_gl_4k.jpg");
 const groundArm = loadTiled("/assets/textures/grass_ground/arm_4k.jpg"); // R=AO G=Rough B=Metal
@@ -322,7 +392,7 @@ const treePositions = scatterPositions(TREE_COUNT, 4.5, 17, 1.4);
 
 const trunkGeo = new THREE.CylinderGeometry(0.05, 0.11, 1.6, 10);
 trunkGeo.translate(0, 0.8, 0);
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3b2a, roughness: 0.9, flatShading: true });
+const trunkMat = makeBarkMaterial(0xb09a7c);
 const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
 trunks.castShadow = true;
 
@@ -372,13 +442,83 @@ treePositions.forEach(([x, z], i) => {
   canopies.setMatrixAt(i, dummy.matrix);
   treeCanopySway.push({ x, y: cy, z, rotX, rotY, rotZ, sX, sY, sZ, phase: rng() * Math.PI * 2 });
 
-  tmpColor.lerpColors(espinilloGreen, algarroboGreen, rng());
+  // Más oscura que las hojas: la masa de la copa hace de sombra interior y
+  // deja que el follaje recortado sea lo que se lee en el contorno.
+  tmpColor.lerpColors(espinilloGreen, algarroboGreen, rng()).multiplyScalar(0.62);
   canopies.setColorAt(i, tmpColor);
 });
 trunks.instanceMatrix.needsUpdate = true;
 canopies.instanceMatrix.needsUpdate = true;
 canopies.instanceColor.needsUpdate = true;
 scene.add(trunks, canopies);
+
+// Follaje real sobre la copa: alpha cards con la foto de hoja repartidas
+// sobre la superficie del elipsoide. La masa de la copa sigue abajo como
+// volumen y oclusión, pero el CONTORNO que ve el ojo ahora lo dan hojas
+// recortadas, no un poliedro liso. Es lo que más acerca el árbol a la
+// referencia fotográfica.
+const CANOPY_LEAVES = 88;
+const canopyLeafGeo = new THREE.PlaneGeometry(0.34, 0.34 * LEAF_ASPECT);
+const canopyLeafMat = makeLeafCardMaterial(new THREE.Color(0xbcd48a), 1);
+const canopyLeaves = new THREE.InstancedMesh(
+  canopyLeafGeo,
+  canopyLeafMat,
+  treeCanopySway.length * CANOPY_LEAVES
+);
+canopyLeaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+canopyLeaves.castShadow = true;
+
+// Generador propio para las hojas: si consumieran del rng global, sus
+// ~21k llamadas correrían toda la secuencia posterior y cambiarían dónde
+// caen árboles, palmeras y fauna. Aislarlo mantiene el layout estable.
+const leafRng = mulberry32(90210);
+
+const canopyLeafSway = [];
+let canopyLeafIdx = 0;
+const CANOPY_BASE_RADIUS = 0.55; // el radio del icosaedro con el que se hizo la copa
+
+treeCanopySway.forEach((c) => {
+  for (let l = 0; l < CANOPY_LEAVES; l++) {
+    // Punto sobre el elipsoide de la copa. Se empuja un poco hacia afuera
+    // (1.03) para que la hoja asome del volumen en vez de quedar enterrada.
+    const theta = leafRng() * Math.PI * 2;
+    const phi = Math.acos(2 * leafRng() - 1);
+    const nx = Math.sin(phi) * Math.cos(theta);
+    const ny = Math.cos(phi);
+    const nz = Math.sin(phi) * Math.sin(theta);
+    const x = c.x + nx * CANOPY_BASE_RADIUS * c.sX * 1.08;
+    const y = c.y + ny * CANOPY_BASE_RADIUS * c.sY * 1.08;
+    const z = c.z + nz * CANOPY_BASE_RADIUS * c.sZ * 1.08;
+
+    const rotX = (leafRng() - 0.5) * 2.2;
+    const rotY = Math.atan2(nx, nz) + (leafRng() - 0.5) * 1.2;
+    const rotZ = (leafRng() - 0.5) * 2.2;
+    // La hoja escala con el árbol: con un tamaño fijo, los ejemplares
+    // grandes se seguían leyendo como masas lisas porque sus hojas quedaban
+    // diminutas en proporción.
+    const ls = (0.7 + leafRng() * 0.55) * Math.max(0.8, c.sX);
+
+    dummy.position.set(x, y, z);
+    dummy.rotation.set(rotX, rotY, rotZ);
+    dummy.scale.set(ls, ls, ls);
+    dummy.updateMatrix();
+    canopyLeaves.setMatrixAt(canopyLeafIdx, dummy.matrix);
+    canopyLeafSway.push({
+      index: canopyLeafIdx,
+      x,
+      y,
+      z,
+      ls,
+      rotX,
+      rotY,
+      rotZ,
+      phase: leafRng() * Math.PI * 2,
+    });
+    canopyLeafIdx++;
+  }
+});
+canopyLeaves.instanceMatrix.needsUpdate = true;
+scene.add(canopyLeaves);
 
 // Arbustos nativos vistosos: 5 especies REALES del Uruguay (no genéricas),
 // cada una con geometría propia + color de flor botánicamente fiel.
@@ -584,7 +724,7 @@ const shrubBodyMeshes = [];
 const leafSway = [];
 const leafMeshes = [];
 
-for (const species of SHRUB_SPECIES) {
+SHRUB_SPECIES.forEach((species, speciesIndex) => {
   const positions = scatterPositions(species.count, 1.8, 9.5, 1.0);
 
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -614,19 +754,21 @@ for (const species of SHRUB_SPECIES) {
   // sesgo "erguido" propio de cada especie (uprightBias — alto en
   // carqueja, cuyos tallos aplanados crecen casi verticales).
   const leafCfg = species.leaf;
-  const leafGeo = makeLeafGeometry(leafCfg.radiusFn, leafCfg.segments, leafCfg.sizeX, leafCfg.sizeY);
-  // Un poco más clara y saturada que el follaje base: así la silueta de
-  // hoja individual se lee por contraste contra el "blob" de fondo, en vez
-  // de perderse mezclada con la textura moteada de la mesa base.
+  // Alpha card: un plano liso recortado por el mapa de opacidad de la foto.
+  // La silueta ya no la da la geometría (antes era un contorno 2D generado)
+  // sino el recorte de la hoja real, con su venación y su borde aserrado.
+  // El tamaño sale de la especie, pero la PROPORCIÓN la fija la foto: si se
+  // usara el aspecto de cada contorno (la carqueja era casi 9:1) la hoja
+  // saldría aplastada.
+  const leafW = Math.max(leafCfg.sizeX, leafCfg.sizeY) * 2.3;
+  const leafGeo = new THREE.PlaneGeometry(leafW, leafW * LEAF_ASPECT);
+  // El tinte modula la foto para acercarla al verde de cada especie sin
+  // perder la textura: multiplicar por un color claro conserva el detalle.
   const leafBaseColor = new THREE.Color(species.foliage);
   const leafHsl = { h: 0, s: 0, l: 0 };
   leafBaseColor.getHSL(leafHsl);
-  leafBaseColor.setHSL(leafHsl.h, Math.min(1, leafHsl.s * 1.25), Math.min(0.85, leafHsl.l * 1.35));
-  const leafMat = new THREE.MeshStandardMaterial({
-    color: leafBaseColor,
-    roughness: (species.roughness ?? 0.9) * 0.7,
-    side: THREE.DoubleSide,
-  });
+  leafBaseColor.setHSL(leafHsl.h, Math.min(1, leafHsl.s * 0.9), Math.min(0.95, leafHsl.l * 2.1));
+  const leafMat = makeLeafCardMaterial(leafBaseColor, speciesIndex % 2);
   const leaves = new THREE.InstancedMesh(leafGeo, leafMat, positions.length * leafCfg.count);
   leaves.castShadow = true;
   leaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -685,7 +827,7 @@ for (const species of SHRUB_SPECIES) {
   flowers.instanceMatrix.needsUpdate = true;
   leaves.instanceMatrix.needsUpdate = true;
   scene.add(body, flowers, leaves);
-}
+});
 
 // Pastos altos: mechones dispersos en primer plano
 const GRASS_COUNT = 400;
@@ -761,7 +903,7 @@ scene.add(reeds);
 // punta es la que más se desplaza — que es como cuelga un sauce de verdad.
 const WILLOW_COUNT = 4;
 const WHIPS_PER_WILLOW = 150;
-const willowTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3d2e, roughness: 0.95, flatShading: true });
+const willowTrunkMat = makeBarkMaterial(0x9d8a70);
 const willowCrownMat = new THREE.MeshStandardMaterial({ color: 0x6e8c4e, roughness: 0.9, flatShading: true });
 const willowWhipMat = new THREE.MeshStandardMaterial({ color: 0x7d9a5a, roughness: 0.85, flatShading: true });
 
@@ -967,7 +1109,7 @@ scene.add(pampasBlades, pampasPlumes, pampasStalks);
 // densa: daba la única sombra de la llanura, así que funciona como hito
 // visual de la escena.
 const OMBU_COUNT = 3;
-const ombuTrunkMat = new THREE.MeshStandardMaterial({ color: 0x5b4a38, roughness: 0.95, flatShading: true });
+const ombuTrunkMat = makeBarkMaterial(0xa8947a);
 const ombuLeafMat = new THREE.MeshStandardMaterial({ color: 0x3f5f33, roughness: 0.88, flatShading: true });
 
 const ombuPositions = scatterPositions(OMBU_COUNT, 8, 13, 2.5);
@@ -1043,7 +1185,7 @@ ombuPositions.forEach(([x, z], i) => {
 // sobre todo los racimos de flores rojo carmesí intenso, que en el árbol
 // real se ven antes que el follaje.
 const CEIBO_COUNT = 3;
-const ceiboTrunkMat = new THREE.MeshStandardMaterial({ color: 0x584636, roughness: 0.95, flatShading: true });
+const ceiboTrunkMat = makeBarkMaterial(0xa08b70);
 const ceiboLeafMat = new THREE.MeshStandardMaterial({ color: 0x47663a, roughness: 0.9, flatShading: true });
 const ceiboFlowerMat = new THREE.MeshStandardMaterial({
   color: 0xc4142c,
@@ -1152,7 +1294,7 @@ const FRONDS_PER_PALM = 13;
 const LEAFLET_STEPS = 22;
 const LEAFLETS_PER_FROND = LEAFLET_STEPS * 2;
 
-const butiaTrunkMat = new THREE.MeshStandardMaterial({ color: 0x6b5a44, roughness: 1.0, flatShading: true });
+const butiaTrunkMat = makeBarkMaterial(0xc0a888);
 const butiaLeafletMat = new THREE.MeshStandardMaterial({
   color: 0x6f8557,
   roughness: 0.9,
@@ -2244,6 +2386,17 @@ renderer.setAnimationLoop((time) => {
     canopies.setMatrixAt(i, dummy.matrix);
   }
   canopies.instanceMatrix.needsUpdate = true;
+
+  // Las hojas de la copa se mueven un poco más que la masa: son livianas.
+  for (const cl of canopyLeafSway) {
+    const sway = Math.sin(t * 1.0 + cl.phase) * 0.1 + Math.sin(t * 2.2 + cl.phase * 1.5) * 0.04;
+    dummy.position.set(cl.x, cl.y, cl.z);
+    dummy.rotation.set(cl.rotX + sway, cl.rotY, cl.rotZ + sway * 0.7);
+    dummy.scale.set(cl.ls, cl.ls, cl.ls);
+    dummy.updateMatrix();
+    canopyLeaves.setMatrixAt(cl.index, dummy.matrix);
+  }
+  canopyLeaves.instanceMatrix.needsUpdate = true;
 
   renderer.render(scene, camera);
 });
