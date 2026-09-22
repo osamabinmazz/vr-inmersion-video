@@ -104,16 +104,33 @@ function makeBarkMaterial(tint = 0xffffff) {
   });
 }
 
-const leafColorTex = texLoader.load("/assets/textures/leaf/color.png");
-leafColorTex.colorSpace = THREE.SRGBColorSpace;
-const leafAlphaTex = texLoader.load("/assets/textures/leaf/opacity.png");
-const leafRoughTex = texLoader.load("/assets/textures/leaf/rough.png");
-for (const t of [leafColorTex, leafAlphaTex, leafRoughTex]) {
-  t.anisotropy = maxAnisotropy;
-  // La textura trae DOS hojas lado a lado: se toma media imagen para quedarse
-  // con una sola.
-  t.repeat.set(0.5, 1);
+// DOS fotos de hoja distintas, no una sola repetida, porque las especies de
+// esta escena pertenecen a familias con follaje incompatible:
+//
+//   - "ancha": hoja simple, ovada y aserrada. Es la del ombú (Phytolacca
+//     dioica) y la de los folíolos del ceibo (Erythrina crista-galli).
+//   - "pinnada": hoja compuesta y plumosa. Es la de las fabáceas del monte —
+//     espinillo (Vachellia caven) y algarrobo (Prosopis) — que tienen hoja
+//     bipinnada. Vestirlas con la hoja ancha era un error botánico: ningún
+//     espinillo tiene una hoja parecida a la del ombú.
+function loadLeafPhoto(dir) {
+  const color = texLoader.load(`/assets/textures/${dir}/color.png`);
+  color.colorSpace = THREE.SRGBColorSpace;
+  const alpha = texLoader.load(`/assets/textures/${dir}/opacity.png`);
+  const rough = texLoader.load(`/assets/textures/${dir}/rough.png`);
+  for (const t of [color, alpha, rough]) {
+    t.anisotropy = maxAnisotropy;
+    // Cada foto trae DOS hojas lado a lado: se toma media imagen para
+    // quedarse con una sola.
+    t.repeat.set(0.5, 1);
+  }
+  return { color, alpha, rough };
 }
+
+const LEAF_PHOTOS = {
+  ancha: loadLeafPhoto("leaf"),
+  pinnada: loadLeafPhoto("leaf_pinnada"),
+};
 
 /** Alpha card de hoja: plano recortado por el mapa de opacidad.
  *
@@ -121,17 +138,19 @@ for (const t of [leafColorTex, leafAlphaTex, leafRoughTex]) {
  * profundidad y no produce los halos ni el parpadeo que arruinan la
  * vegetación transparente en VR.
  */
-// Proporción de la hoja dentro de su media textura: alto / ancho. Si se
-// ignora, el plano estira la foto y la hoja sale deformada.
-const LEAF_ASPECT = 1.55;
+// Proporción del plano: alto / ancho. Cada media textura mide 512×1024, así
+// que 2.0 es la única proporción que NO deforma la foto. El valor anterior
+// (1.55) achataba la hoja un 22% y la hacía más ancha de lo que es.
+const LEAF_ASPECT = 2.0;
 
-function makeLeafCardMaterial(tint, variant = 0) {
+function makeLeafCardMaterial(tint, { kind = "ancha", variant = 0 } = {}) {
+  const photo = LEAF_PHOTOS[kind] ?? LEAF_PHOTOS.ancha;
   // Clonar comparte la imagen en memoria pero da offset propio, así cada
   // especie puede usar una de las dos hojas de la foto.
   const offsetX = variant === 0 ? 0.0 : 0.5;
-  const map = leafColorTex.clone();
-  const alphaMap = leafAlphaTex.clone();
-  const roughnessMap = leafRoughTex.clone();
+  const map = photo.color.clone();
+  const alphaMap = photo.alpha.clone();
+  const roughnessMap = photo.rough.clone();
   for (const t of [map, alphaMap, roughnessMap]) {
     t.offset.x = offsetX;
     t.needsUpdate = true;
@@ -458,8 +477,11 @@ scene.add(trunks, canopies);
 // recortadas, no un poliedro liso. Es lo que más acerca el árbol a la
 // referencia fotográfica.
 const CANOPY_LEAVES = 88;
+// Estos árboles son espinillo y algarrobo: fabáceas de hoja bipinnada. Por
+// eso usan la foto "pinnada" y no la ovada ancha, que pertenece a otra
+// familia entera.
 const canopyLeafGeo = new THREE.PlaneGeometry(0.34, 0.34 * LEAF_ASPECT);
-const canopyLeafMat = makeLeafCardMaterial(new THREE.Color(0xbcd48a), 1);
+const canopyLeafMat = makeLeafCardMaterial(new THREE.Color(0x9cb865), { kind: "pinnada", variant: 1 });
 const canopyLeaves = new THREE.InstancedMesh(
   canopyLeafGeo,
   canopyLeafMat,
@@ -519,6 +541,62 @@ treeCanopySway.forEach((c) => {
 });
 canopyLeaves.instanceMatrix.needsUpdate = true;
 scene.add(canopyLeaves);
+
+// --- Tarjetas de hoja sobre lóbulos de follaje ---------------------------
+// El ombú, el ceibo y el sauce eran masas lisas de flat shading: a un metro
+// de distancia se leían como piedras verdes, no como follaje. Este ayudante
+// reparte hojas recortadas sobre la superficie de sus lóbulos, que es lo
+// mismo que ya hace la copa del monte y lo que más acerca un árbol a la
+// referencia fotográfica.
+const extraLeafCards = [];
+
+function scatterLeafCards({ lobes, perLobe, size, kind, tint, variant = 0, narrow = 1, seed, outward = 1.05 }) {
+  if (!lobes.length) return null;
+  const geo = new THREE.PlaneGeometry(size * narrow, size * LEAF_ASPECT);
+  const mat = makeLeafCardMaterial(tint, { kind, variant });
+  const mesh = new THREE.InstancedMesh(geo, mat, lobes.length * perLobe);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.castShadow = true;
+
+  // Generador propio por sistema de hojas: si consumieran del rng global,
+  // sus miles de llamadas correrían toda la secuencia posterior y moverían
+  // árboles, palmeras y fauna. Ya pasó una vez.
+  const localRng = mulberry32(seed);
+  const sway = [];
+  let idx = 0;
+
+  for (const lobe of lobes) {
+    for (let l = 0; l < perLobe; l++) {
+      // Punto sobre el elipsoide del lóbulo, empujado hacia afuera para que
+      // la hoja asome en vez de quedar enterrada en la masa.
+      const theta = localRng() * Math.PI * 2;
+      const phi = Math.acos(2 * localRng() - 1);
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+      const x = lobe.x + nx * lobe.rx * outward;
+      const y = lobe.y + ny * lobe.ry * outward;
+      const z = lobe.z + nz * lobe.rz * outward;
+
+      const rotX = (localRng() - 0.5) * 2.2;
+      const rotY = Math.atan2(nx, nz) + (localRng() - 0.5) * 1.2;
+      const rotZ = (localRng() - 0.5) * 2.2;
+      const ls = (0.75 + localRng() * 0.5) * (lobe.leafScale ?? 1);
+
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(rotX, rotY, rotZ);
+      dummy.scale.set(ls, ls, ls);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(idx, dummy.matrix);
+      sway.push({ index: idx, x, y, z, ls, rotX, rotY, rotZ, phase: localRng() * Math.PI * 2 });
+      idx++;
+    }
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  scene.add(mesh);
+  extraLeafCards.push({ mesh, sway });
+  return mesh;
+}
 
 // Arbustos nativos vistosos: 5 especies REALES del Uruguay (no genéricas),
 // cada una con geometría propia + color de flor botánicamente fiel.
@@ -611,43 +689,11 @@ function makeFoliageBumpMap() {
   return tex;
 }
 
-// Hojas individuales reconocibles por especie: en vez de que la identidad
-// de cada arbusto dependa solo del color, cada una tiene una silueta de
-// hoja propia (contorno 2D real, no una malla genérica) instanciada muchas
-// veces sobre el volumen de follaje — bilobulada (pata de vaca), lámina
-// delgada tipo tallo aplanado (carqueja, casi sin hoja verdadera), redondeada
-// palmada (malva sonrojada), lanceolada alargada (chilca, "salicifolia" =
-// hoja de sauce) u ovalada con borde aserrado (espina amarilla, follaje
-// tipo laurel con espinas).
-function makeLeafGeometry(radiusFn, segments, sizeX, sizeY) {
-  const shape = new THREE.Shape();
-  for (let i = 0; i <= segments; i++) {
-    const a = (i / segments) * Math.PI * 2;
-    const r = radiusFn(a);
-    const x = Math.cos(a) * r * sizeX;
-    const y = Math.sin(a) * r * sizeY;
-    if (i === 0) shape.moveTo(x, y);
-    else shape.lineTo(x, y);
-  }
-  const geo = new THREE.ShapeGeometry(shape, 1);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function bilobedRadius(a) {
-  const d = a > Math.PI ? a - Math.PI * 2 : a; // distancia angular al notch en a=0
-  const notch = 0.6 * Math.exp(-(d * d) / 0.05);
-  return Math.max(0.35, 1 - notch);
-}
-function ellipseRadius() {
-  return 1; // el contorno lo da el aspect ratio sizeX/sizeY, no la función
-}
-function palmateRadius(a) {
-  return 1 + 0.14 * Math.cos(a * 5); // 5 lóbulos suaves, tipo hoja de malva
-}
-function serratedOvalRadius(a) {
-  return 1 + 0.07 * Math.sin(a * 16); // borde con pequeñas espinas/dientes
-}
+// Hojas individuales reconocibles por especie. La silueta ya no viene de un
+// contorno 2D generado (bilobulado, palmado, aserrado…) sino del recorte
+// alfa de una foto real: la venación y el borde de una hoja fotografiada se
+// leen mejor a un metro de distancia que cualquier polígono dibujado a mano.
+// Lo que distingue a cada especie ahora es qué foto usa y con qué proporción.
 
 const SHRUB_SPECIES = [
   // Pata de vaca (Bauhinia forficata): flor blanca en forma de mariposa,
@@ -660,7 +706,7 @@ const SHRUB_SPECIES = [
     flower: 0xfbfaf5,
     roughness: 0.85,
     count: 22,
-    leaf: { radiusFn: bilobedRadius, segments: 24, sizeX: 0.075, sizeY: 0.068, count: 11, uprightBias: 0.3 },
+    leaf: { kind: "ancha", narrow: 1.0, sizeX: 0.075, sizeY: 0.068, count: 11, uprightBias: 0.3 },
   },
   // Carqueja (Baccharis trimera): subarbusto rústico, tallos aplanados y
   // angulosos, casi sin hojas verdaderas — se representa como muchas
@@ -673,7 +719,7 @@ const SHRUB_SPECIES = [
     flower: 0xd9d18a,
     roughness: 0.95,
     count: 24,
-    leaf: { radiusFn: ellipseRadius, segments: 16, sizeX: 0.08, sizeY: 0.009, count: 22, uprightBias: 0.85 },
+    leaf: { kind: "ancha", narrow: 0.32, sizeX: 0.08, sizeY: 0.009, count: 22, uprightBias: 0.85 },
   },
   // Malva sonrojada (Calyculogygas uruguayensis): flores rojas vistosas,
   // especie prioritaria — hoja redondeada palmada típica de las malváceas
@@ -685,7 +731,7 @@ const SHRUB_SPECIES = [
     flower: 0xe0354f,
     roughness: 0.9,
     count: 20,
-    leaf: { radiusFn: palmateRadius, segments: 22, sizeX: 0.068, sizeY: 0.063, count: 10, uprightBias: 0.25 },
+    leaf: { kind: "ancha", narrow: 1.1, sizeX: 0.068, sizeY: 0.063, count: 10, uprightBias: 0.25 },
   },
   // Chilca (Baccharis salicifolia — "hoja de sauce"): monte ribereño, atrae
   // polinizadores — hoja lanceolada larga y angosta, apuntada en los extremos
@@ -697,7 +743,7 @@ const SHRUB_SPECIES = [
     flower: 0xf0ece0,
     roughness: 0.9,
     count: 24,
-    leaf: { radiusFn: ellipseRadius, segments: 18, sizeX: 0.1, sizeY: 0.02, count: 13, uprightBias: 0.4 },
+    leaf: { kind: "ancha", narrow: 0.45, sizeX: 0.1, sizeY: 0.02, count: 13, uprightBias: 0.4 },
   },
   // Espina amarilla (Berberis laurina — "hoja de laurel"): follaje brillante,
   // flor amarilla llamativa — hoja ovalada con borde finamente aserrado/espinoso
@@ -709,7 +755,7 @@ const SHRUB_SPECIES = [
     flower: 0xffd400,
     roughness: 0.35,
     count: 20,
-    leaf: { radiusFn: serratedOvalRadius, segments: 24, sizeX: 0.052, sizeY: 0.03, count: 15, uprightBias: 0.2 },
+    leaf: { kind: "ancha", narrow: 0.85, sizeX: 0.052, sizeY: 0.03, count: 15, uprightBias: 0.2 },
   },
 ];
 
@@ -760,15 +806,22 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
   // El tamaño sale de la especie, pero la PROPORCIÓN la fija la foto: si se
   // usara el aspecto de cada contorno (la carqueja era casi 9:1) la hoja
   // saldría aplastada.
+  // `narrow` estrecha la tarjeta para especies de hoja lanceolada (chilca,
+  // carqueja). Deforma la foto a propósito: no hay foto CC0 de hoja de
+  // Baccharis, y una hoja ancha en una chilca se lee peor que una ovada
+  // estirada a la proporción correcta.
   const leafW = Math.max(leafCfg.sizeX, leafCfg.sizeY) * 2.3;
-  const leafGeo = new THREE.PlaneGeometry(leafW, leafW * LEAF_ASPECT);
+  const leafGeo = new THREE.PlaneGeometry(leafW * (leafCfg.narrow ?? 1), leafW * LEAF_ASPECT);
   // El tinte modula la foto para acercarla al verde de cada especie sin
   // perder la textura: multiplicar por un color claro conserva el detalle.
   const leafBaseColor = new THREE.Color(species.foliage);
   const leafHsl = { h: 0, s: 0, l: 0 };
   leafBaseColor.getHSL(leafHsl);
   leafBaseColor.setHSL(leafHsl.h, Math.min(1, leafHsl.s * 0.9), Math.min(0.95, leafHsl.l * 2.1));
-  const leafMat = makeLeafCardMaterial(leafBaseColor, speciesIndex % 2);
+  const leafMat = makeLeafCardMaterial(leafBaseColor, {
+    kind: leafCfg.kind ?? "ancha",
+    variant: speciesIndex % 2,
+  });
   const leaves = new THREE.InstancedMesh(leafGeo, leafMat, positions.length * leafCfg.count);
   leaves.castShadow = true;
   leaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -904,7 +957,7 @@ scene.add(reeds);
 const WILLOW_COUNT = 4;
 const WHIPS_PER_WILLOW = 150;
 const willowTrunkMat = makeBarkMaterial(0x9d8a70);
-const willowCrownMat = new THREE.MeshStandardMaterial({ color: 0x6e8c4e, roughness: 0.9, flatShading: true });
+const willowCrownMat = new THREE.MeshStandardMaterial({ color: 0x475c33, roughness: 0.9, flatShading: true });
 const willowWhipMat = new THREE.MeshStandardMaterial({ color: 0x7d9a5a, roughness: 0.85, flatShading: true });
 
 // Ramitas colgantes finas (conos, no planos anchos): muchas y delgadas
@@ -916,6 +969,7 @@ willowWhips.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 willowWhips.castShadow = true;
 
 const whipSway = [];
+const willowCrownLobes = [];
 let whipIdx = 0;
 for (let w = 0; w < WILLOW_COUNT; w++) {
   const angle = (w / WILLOW_COUNT) * Math.PI * 2 + 0.6 + rng() * 0.5;
@@ -953,6 +1007,15 @@ for (let w = 0; w < WILLOW_COUNT; w++) {
   crown.scale.set(crownSpread * 0.85, crownSpread * 0.5, crownSpread * 0.85);
   crown.castShadow = true;
   scene.add(crown);
+  willowCrownLobes.push({
+    x: crownX,
+    y: crownY - 0.15,
+    z: crownZ,
+    rx: crownSpread * 0.85,
+    ry: crownSpread * 0.5,
+    rz: crownSpread * 0.85,
+    leafScale: crownSpread * 0.9,
+  });
 
   for (let k = 0; k < WHIPS_PER_WILLOW; k++) {
     const a = rng() * Math.PI * 2;
@@ -980,6 +1043,24 @@ for (let w = 0; w < WILLOW_COUNT; w++) {
 }
 willowWhips.instanceMatrix.needsUpdate = true;
 scene.add(willowWhips);
+
+// El sauce criollo (Salix humboldtiana) tiene hoja lanceolada larga y
+// angosta. No hay foto CC0 de hoja de sauce, así que se usa la ovada
+// estrechada al 38%: deforma la foto a propósito, pero la proporción que
+// queda es la del sauce y es lo que el ojo lee en la silueta.
+scatterLeafCards({
+  lobes: willowCrownLobes,
+  perLobe: 240,
+  size: 0.24,
+  kind: "ancha",
+  narrow: 0.42,
+  tint: new THREE.Color(0x9cbc6e),
+  variant: 0,
+  seed: 51477,
+  // Asoman más que en el resto de los árboles: la copa del sauce es grande
+  // y lisa, y con menos empuje las hojas quedaban dentro del volumen.
+  outward: 1.1,
+});
 
 // --- Cortadera (Cortaderia selloana) -------------------------------------
 // El pasto más característico de la pradera pampeana: mata densa de hojas
@@ -1112,6 +1193,7 @@ const OMBU_COUNT = 3;
 const ombuTrunkMat = makeBarkMaterial(0xa8947a);
 const ombuLeafMat = new THREE.MeshStandardMaterial({ color: 0x3f5f33, roughness: 0.88, flatShading: true });
 
+const ombuCrownLobes = [];
 const ombuPositions = scatterPositions(OMBU_COUNT, 8, 13, 2.5);
 ombuPositions.forEach(([x, z], i) => {
   const scale = 1.0 + rng() * 0.35;
@@ -1167,6 +1249,15 @@ ombuPositions.forEach(([x, z], i) => {
     lobe.scale.set(ls, ls * 0.62, ls);
     lobe.castShadow = true;
     scene.add(lobe);
+    ombuCrownLobes.push({
+      x: lobe.position.x,
+      y: lobe.position.y,
+      z: lobe.position.z,
+      rx: ls,
+      ry: ls * 0.62,
+      rz: ls,
+      leafScale: scale,
+    });
   }
   const crownCore = new THREE.Mesh(
     makeOrganicGeometry(new THREE.IcosahedronGeometry(1, 2), 0.25, 360 + i),
@@ -1176,6 +1267,28 @@ ombuPositions.forEach(([x, z], i) => {
   crownCore.scale.set(1.5 * scale, 0.85 * scale, 1.5 * scale);
   crownCore.castShadow = true;
   scene.add(crownCore);
+  ombuCrownLobes.push({
+    x,
+    y: crownY + 0.25 * scale,
+    z,
+    rx: 1.5 * scale,
+    ry: 0.85 * scale,
+    rz: 1.5 * scale,
+    leafScale: scale * 1.15,
+  });
+});
+
+// Hoja del ombú: simple, ovada y grande. Es el árbol más voluminoso de la
+// escena, así que su copa lisa era la que más delataba que el follaje era
+// geometría y no vegetación.
+scatterLeafCards({
+  lobes: ombuCrownLobes,
+  perLobe: 46,
+  size: 0.34,
+  kind: "ancha",
+  tint: new THREE.Color(0x8fb562),
+  variant: 0,
+  seed: 77031,
 });
 
 // --- Ceibo (Erythrina crista-galli) --------------------------------------
@@ -1206,6 +1319,7 @@ ceiboFlowers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 ceiboFlowers.castShadow = true;
 
 const ceiboFlowerSway = [];
+const ceiboCrownLobes = [];
 let ceiboFlowerIdx = 0;
 
 for (let c = 0; c < CEIBO_COUNT; c++) {
@@ -1255,6 +1369,16 @@ for (let c = 0; c < CEIBO_COUNT; c++) {
     const ls = (0.85 + rng() * 0.5) * scale;
     lobe.scale.set(ls, ls * 0.75, ls);
     lobe.castShadow = true;
+    ceiboCrownLobes.push({
+      x: lobe.position.x,
+      y: lobe.position.y,
+      z: lobe.position.z,
+      // el icosaedro base tiene radio 0.5, no 1
+      rx: 0.5 * ls,
+      ry: 0.5 * ls * 0.75,
+      rz: 0.5 * ls,
+      leafScale: scale,
+    });
     scene.add(lobe);
   }
 
@@ -1280,6 +1404,20 @@ for (let c = 0; c < CEIBO_COUNT; c++) {
 }
 ceiboFlowers.instanceMatrix.needsUpdate = true;
 scene.add(ceiboFlowers);
+
+// Follaje del ceibo: hoja trifoliada de folíolos anchos. Se usa la foto
+// ovada, y pocas hojas por lóbulo a propósito — la copa del ceibo es
+// abierta y rala, y es esa transparencia la que deja ver las flores rojas,
+// que en el árbol real se ven antes que el follaje.
+scatterLeafCards({
+  lobes: ceiboCrownLobes,
+  perLobe: 32,
+  size: 0.22,
+  kind: "ancha",
+  tint: new THREE.Color(0x8aab66),
+  variant: 1,
+  seed: 64108,
+});
 
 // --- Palma butiá (Butia odorata) -----------------------------------------
 // La palmera nativa uruguaya. OJO con el nombre: la especie de acá es
@@ -2093,6 +2231,11 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 1.6, 4);
 cameraRig.add(camera);
 
+// Gancho de inspección: permite recolocar la cámara desde una herramienta de
+// captura para revisar cualquier rincón de la escena sin tocar el código.
+// `import.meta.env.DEV` es false en el build, así que no viaja al visor.
+if (import.meta.env.DEV) window.__cam = camera;
+
 // --- Marcadores de puntos de interés (placeholders) -------------------
 // Figuras humanas (Vaimaca Perú, Abayubá, Guyunusa) pospuestas — ver README.
 // Estos marcadores señalan dónde irán, con un panel de texto flotante.
@@ -2397,6 +2540,21 @@ renderer.setAnimationLoop((time) => {
     canopyLeaves.setMatrixAt(cl.index, dummy.matrix);
   }
   canopyLeaves.instanceMatrix.needsUpdate = true;
+
+  // Mismo balanceo para las hojas de ombú, ceibo y sauce. Si quedaran
+  // quietas mientras el resto del monte se mueve, la inmovilidad se notaría
+  // más que la ausencia de hojas.
+  for (const system of extraLeafCards) {
+    for (const lf of system.sway) {
+      const sway = Math.sin(t * 1.0 + lf.phase) * 0.1 + Math.sin(t * 2.2 + lf.phase * 1.5) * 0.04;
+      dummy.position.set(lf.x, lf.y, lf.z);
+      dummy.rotation.set(lf.rotX + sway, lf.rotY, lf.rotZ + sway * 0.7);
+      dummy.scale.set(lf.ls, lf.ls, lf.ls);
+      dummy.updateMatrix();
+      system.mesh.setMatrixAt(lf.index, dummy.matrix);
+    }
+    system.mesh.instanceMatrix.needsUpdate = true;
+  }
 
   renderer.render(scene, camera);
 });

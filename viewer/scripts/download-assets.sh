@@ -31,12 +31,18 @@ curl -sS -L -o "$TEX_DIR/disp_4k.jpg" \
 # necesario para no cargar el viewer con decenas de MB de normales que a
 # esta escala no se notan.
 LEAF_DIR="public/assets/textures/leaf"
+LEAF_PIN_DIR="public/assets/textures/leaf_pinnada"
 BARK_DIR="public/assets/textures/bark"
-mkdir -p "$LEAF_DIR" "$BARK_DIR"
+mkdir -p "$LEAF_DIR" "$LEAF_PIN_DIR" "$BARK_DIR"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "Descargando hoja con canal alfa (Leaf001, CC0 ambientCG)..."
+# Hacen falta DOS fotos de hoja distintas porque las especies de la escena
+# son de familias con follaje incompatible: el ombú y el ceibo tienen hoja
+# simple ancha, mientras que el espinillo y el algarrobo son fabáceas de
+# hoja bipinnada. Con una sola foto, el monte llevaba puesta la hoja del
+# ombú, que es un error botánico.
+echo "Descargando hoja ancha con canal alfa (Leaf001, CC0 ambientCG)..."
 curl -sS -L -o "$TMP/leaf.zip" "https://ambientcg.com/get?file=Leaf001_1K-PNG.zip"
 unzip -o -j -q "$TMP/leaf.zip" \
   "Leaf001_1K-PNG_Color.png" "Leaf001_1K-PNG_Opacity.png" "Leaf001_1K-PNG_Roughness.png" \
@@ -44,6 +50,15 @@ unzip -o -j -q "$TMP/leaf.zip" \
 mv "$TMP/leaf/Leaf001_1K-PNG_Color.png"     "$LEAF_DIR/color.png"
 mv "$TMP/leaf/Leaf001_1K-PNG_Opacity.png"   "$LEAF_DIR/opacity.png"
 mv "$TMP/leaf/Leaf001_1K-PNG_Roughness.png" "$LEAF_DIR/rough.png"
+
+echo "Descargando hoja pinnada con canal alfa (Leaf003, CC0 ambientCG)..."
+curl -sS -L -o "$TMP/leaf3.zip" "https://ambientcg.com/get?file=Leaf003_1K-PNG.zip"
+unzip -o -j -q "$TMP/leaf3.zip" \
+  "Leaf003_1K-PNG_Color.png" "Leaf003_1K-PNG_Opacity.png" "Leaf003_1K-PNG_Roughness.png" \
+  -d "$TMP/leaf3"
+mv "$TMP/leaf3/Leaf003_1K-PNG_Color.png"     "$LEAF_PIN_DIR/color.png"
+mv "$TMP/leaf3/Leaf003_1K-PNG_Opacity.png"   "$LEAF_PIN_DIR/opacity.png"
+mv "$TMP/leaf3/Leaf003_1K-PNG_Roughness.png" "$LEAF_PIN_DIR/rough.png"
 
 echo "Descargando corteza (Bark014, CC0 ambientCG)..."
 curl -sS -L -o "$TMP/bark.zip" "https://ambientcg.com/get?file=Bark014_1K-JPG.zip"

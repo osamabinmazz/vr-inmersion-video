@@ -56,17 +56,21 @@ Cuatro rondas seguidas de subir polígonos no volvieron realista la vegetación,
 Texturas CC0 de [ambientCG](https://ambientcg.com) (descarga directa, como Poly Haven — las baja `scripts/download-assets.sh`):
 
 - **Corteza** (`Bark014`, 1K: color + normal + roughness) en todos los troncos — espinillo, ombú, ceibo, sauce y butiá. Es la misma textura teñida distinto por especie, lo que cuesta un solo juego de mapas en memoria.
-- **Hoja con canal alfa** (`Leaf001`, 1K: color + opacity + roughness). Es una hoja escaneada de verdad, con venación y borde aserrado. La imagen trae **dos** hojas (haz y envés), así que clonando la textura con distinto `offset.x` se obtienen dos variantes sin costo de memoria extra.
+- **Dos fotos de hoja con canal alfa**, no una. Cada imagen trae **dos** hojas, así que clonando la textura con distinto `offset.x` salen cuatro variantes sin costo de memoria extra:
+  - `Leaf001` — **hoja ancha**: simple, ovada, de borde aserrado. Ombú (*Phytolacca dioica*) y folíolos del ceibo (*Erythrina crista-galli*).
+  - `Leaf003` — **hoja pinnada**: compuesta y plumosa. Espinillo (*Vachellia caven*) y algarrobo (*Prosopis*), que son fabáceas de hoja bipinnada.
+
+  La segunda foto corrige un **error botánico**: con una sola textura, el monte de espinillos y algarrobos llevaba puesta la hoja del ombú, que es de otra familia entera. La silueta del follaje es lo primero que identifica un árbol a distancia, así que el error se veía.
 
 Decisiones que importan:
 
 - **`alphaTest` en vez de `transparent`.** Da recorte duro, no necesita ordenar por profundidad y no produce los halos ni el parpadeo que arruinan la vegetación transparente en VR.
 - **Translucidez aproximada.** La hoja real deja pasar la luz y a contraluz se enciende; un `transmission` real sería carísimo en un visor autónomo, así que se simula con una emisión tenue del propio verde.
-- **La proporción la fija la foto, no la especie.** Si el plano usara el aspecto de cada contorno (la carqueja era casi 9:1) la hoja saldría aplastada.
+- **La proporción del plano es 2.0, la de la media textura.** Cada foto se parte al medio (512×1024 por hoja), así que cualquier otro valor deforma la imagen. El valor anterior (1.55) achataba la hoja un 22% y la hacía más ancha de lo que es.
+- **Estrechar la tarjeta es una deformación deliberada**, no un descuido. La chilca (*Baccharis salicifolia*), la carqueja (*B. trimera*) y el sauce criollo (*Salix humboldtiana*) tienen hoja lanceolada, y no hay foto CC0 de ninguna de las tres: se usa la ovada estirada a la proporción correcta, que se lee mejor que una hoja ancha puesta donde no va.
 - **Las hojas de copa escalan con el árbol.** Con un tamaño fijo, los ejemplares grandes se seguían leyendo como masas lisas porque sus hojas quedaban diminutas en proporción. La masa de la copa quedó además más oscura: pasa a hacer de sombra interior y deja que el follaje recortado defina el contorno.
-- **Generador aleatorio propio para las hojas.** Sus ~21.000 llamadas, si salieran del `rng` global, correrían toda la secuencia posterior y cambiarían dónde caen árboles, palmeras y fauna (pasó: un butiá apareció plantado delante de la cámara).
-
-Lo que se perdió en el cambio: los arbustos ya no tienen una silueta de hoja distinta por especie, porque todas usan la misma foto. La diferenciación ahora viene del tamaño, el tinte y la densidad.
+- **Ombú, ceibo y sauce también tienen hojas recortadas.** Eran masas de *flat shading* que a un metro se leían como piedras verdes. Ahora reparten tarjetas sobre la superficie de sus lóbulos de follaje, con densidad y tamaño ajustados por especie: la copa del ceibo queda rala a propósito, porque es esa transparencia la que deja ver sus flores rojas.
+- **Un generador aleatorio propio por sistema de hojas.** Si sus miles de llamadas salieran del `rng` global, correrían toda la secuencia posterior y cambiarían dónde caen árboles, palmeras y fauna (pasó: un butiá apareció plantado delante de la cámara).
 
 ### Especies emblemáticas de la pampa
 
