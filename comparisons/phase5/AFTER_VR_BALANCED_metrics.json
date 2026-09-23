@@ -1,0 +1,624 @@
+{
+ "tag": "AFTER_VR_BALANCED",
+ "errs": [],
+ "cams": {
+  "QC_GROUND": {
+   "pos": [
+    0,
+    1.6,
+    4
+   ],
+   "look": [
+    0,
+    1.4,
+    -6
+   ]
+  },
+  "QC_MID": {
+   "pos": [
+    -6,
+    3.2,
+    8
+   ],
+   "look": [
+    2,
+    1,
+    -2
+   ]
+  },
+  "QC_HIGH": {
+   "pos": [
+    0,
+    9,
+    14
+   ],
+   "look": [
+    1,
+    1,
+    -2
+   ]
+  },
+  "QC_WATER": {
+   "pos": [
+    1.5,
+    1.5,
+    6.5
+   ],
+   "look": [
+    7,
+    0.3,
+    4
+   ]
+  },
+  "QC_TREE_CLOSE": {
+   "pos": [
+    1.2,
+    1.5,
+    3.3
+   ],
+   "look": [
+    3.7,
+    1.8,
+    2
+   ]
+  },
+  "QC_BUSH_CLOSE": {
+   "pos": [
+    0.3,
+    1.3,
+    3.6
+   ],
+   "look": [
+    -0.5,
+    0.9,
+    3.1
+   ]
+  },
+  "QC_HERO_WATER_EDGE": {
+   "pos": [
+    1.2,
+    1.3,
+    3.2
+   ],
+   "look": [
+    3.5,
+    0.3,
+    4
+   ]
+  },
+  "QC_WORST_CASE": {
+   "pos": [
+    -3,
+    2.2,
+    9
+   ],
+   "look": [
+    4,
+    0.8,
+    -2
+   ]
+  },
+  "QC_LIGHTING_COMPARISON": {
+   "pos": [
+    0,
+    1.6,
+    4
+   ],
+   "look": [
+    -4,
+    1.6,
+    -3
+   ]
+  },
+  "QC_ATMOS_DEPTH": {
+   "pos": [
+    -1.5,
+    3.4,
+    12.5
+   ],
+   "look": [
+    -2,
+    1.2,
+    -30
+   ]
+  },
+  "QC_SKY_HORIZON": {
+   "pos": [
+    0,
+    1.6,
+    4
+   ],
+   "look": [
+    2,
+    5,
+    -40
+   ]
+  }
+ },
+ "metrics": {
+  "QC_GROUND": {
+   "meanY": 131.3,
+   "p2": 54.04779815673828,
+   "p98": 230.91360473632812,
+   "clipPct": 0.01,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 30.7,
+     "meanY": 69.5,
+     "localContrast": 3.76,
+     "sat": 0.603,
+     "warm": 38.5
+    },
+    "mid_5_15": {
+     "share": 25.3,
+     "meanY": 93.6,
+     "localContrast": 7.07,
+     "sat": 0.475,
+     "warm": 25.2
+    },
+    "far_15_40": {
+     "share": 3.3,
+     "meanY": 83.6,
+     "localContrast": 5.19,
+     "sat": 0.461,
+     "warm": 19.9
+    },
+    "bg_40_200": {
+     "share": 0.6,
+     "meanY": 104.1,
+     "localContrast": 7.94,
+     "sat": 0.272,
+     "warm": -6.4
+    },
+    "sky": {
+     "share": 40.1,
+     "meanY": 206.6,
+     "localContrast": 0.37,
+     "sat": 0.266,
+     "warm": -64.2
+    }
+   }
+  },
+  "QC_MID": {
+   "meanY": 126.4,
+   "p2": 19.419599533081055,
+   "p98": 238.70840454101562,
+   "clipPct": 0,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 26.8,
+     "meanY": 100.7,
+     "localContrast": 7.07,
+     "sat": 0.519,
+     "warm": 24.5
+    },
+    "mid_5_15": {
+     "share": 32.6,
+     "meanY": 80.9,
+     "localContrast": 9.89,
+     "sat": 0.582,
+     "warm": 32.5
+    },
+    "far_15_40": {
+     "share": 8.3,
+     "meanY": 92.7,
+     "localContrast": 11.07,
+     "sat": 0.465,
+     "warm": 23.5
+    },
+    "bg_40_200": {
+     "share": 1.7,
+     "meanY": 105.7,
+     "localContrast": 6.58,
+     "sat": 0.288,
+     "warm": -3.3
+    },
+    "sky": {
+     "share": 30.7,
+     "meanY": 207.3,
+     "localContrast": 0.59,
+     "sat": 0.252,
+     "warm": -60.3
+    }
+   }
+  },
+  "QC_HIGH": {
+   "meanY": 106,
+   "p2": 18.496999740600586,
+   "p98": 242.5157928466797,
+   "clipPct": 0,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 0.3,
+     "meanY": 87.7,
+     "localContrast": 9.37,
+     "sat": 0.494,
+     "warm": -8.1
+    },
+    "mid_5_15": {
+     "share": 47.8,
+     "meanY": 68.8,
+     "localContrast": 9.84,
+     "sat": 0.597,
+     "warm": 22.3
+    },
+    "far_15_40": {
+     "share": 21.8,
+     "meanY": 81.5,
+     "localContrast": 7.79,
+     "sat": 0.489,
+     "warm": 24.9
+    },
+    "bg_40_200": {
+     "share": 12.4,
+     "meanY": 115,
+     "localContrast": 2.26,
+     "sat": 0.255,
+     "warm": 3.9
+    },
+    "sky": {
+     "share": 17.7,
+     "meanY": 230.6,
+     "localContrast": 0.31,
+     "sat": 0.124,
+     "warm": -30.4
+    }
+   }
+  },
+  "QC_WATER": {
+   "meanY": 108.7,
+   "p2": 16.13360023498535,
+   "p98": 243.48260498046875,
+   "clipPct": 0,
+   "crushPct": 0.1,
+   "bands": {
+    "fg_0_5": {
+     "share": 66.9,
+     "meanY": 99.3,
+     "localContrast": 9.59,
+     "sat": 0.529,
+     "warm": 30.9
+    },
+    "mid_5_15": {
+     "share": 21,
+     "meanY": 107.2,
+     "localContrast": 13.06,
+     "sat": 0.463,
+     "warm": 23
+    },
+    "far_15_40": {
+     "share": 4.2,
+     "meanY": 91.3,
+     "localContrast": 7.45,
+     "sat": 0.437,
+     "warm": 17.7
+    },
+    "bg_40_200": {
+     "share": 0.5,
+     "meanY": 120.9,
+     "localContrast": 8.38,
+     "sat": 0.231,
+     "warm": -8.6
+    },
+    "sky": {
+     "share": 7.4,
+     "meanY": 206.8,
+     "localContrast": 3.83,
+     "sat": 0.244,
+     "warm": -56.8
+    }
+   }
+  },
+  "QC_TREE_CLOSE": {
+   "meanY": 133.2,
+   "p2": 31.40239906311035,
+   "p98": 236.03500366210938,
+   "clipPct": 0.01,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 42.6,
+     "meanY": 110.2,
+     "localContrast": 8.72,
+     "sat": 0.465,
+     "warm": 22.1
+    },
+    "mid_5_15": {
+     "share": 24.4,
+     "meanY": 113.5,
+     "localContrast": 11.47,
+     "sat": 0.463,
+     "warm": 24.5
+    },
+    "far_15_40": {
+     "share": 5.3,
+     "meanY": 90.3,
+     "localContrast": 5.81,
+     "sat": 0.435,
+     "warm": 19
+    },
+    "bg_40_200": {
+     "share": 0.6,
+     "meanY": 113.3,
+     "localContrast": 7.7,
+     "sat": 0.255,
+     "warm": 0.3
+    },
+    "sky": {
+     "share": 27.1,
+     "meanY": 195.8,
+     "localContrast": 0.79,
+     "sat": 0.286,
+     "warm": -66.6
+    }
+   }
+  },
+  "QC_BUSH_CLOSE": {
+   "meanY": 80.8,
+   "p2": 16.931400299072266,
+   "p98": 238.39779663085938,
+   "clipPct": 0.08,
+   "crushPct": 0.02,
+   "bands": {
+    "fg_0_5": {
+     "share": 63.8,
+     "meanY": 61.4,
+     "localContrast": 4.12,
+     "sat": 0.614,
+     "warm": 28.5
+    },
+    "mid_5_15": {
+     "share": 24.1,
+     "meanY": 83.8,
+     "localContrast": 8.5,
+     "sat": 0.485,
+     "warm": 23.4
+    },
+    "far_15_40": {
+     "share": 3.9,
+     "meanY": 82.6,
+     "localContrast": 6.03,
+     "sat": 0.432,
+     "warm": 7.4
+    },
+    "bg_40_200": {
+     "share": 0.5,
+     "meanY": 109.2,
+     "localContrast": 8.45,
+     "sat": 0.251,
+     "warm": -7.8
+    },
+    "sky": {
+     "share": 7.7,
+     "meanY": 229.2,
+     "localContrast": 5.28,
+     "sat": 0.157,
+     "warm": -38.3
+    }
+   }
+  },
+  "QC_HERO_WATER_EDGE": {
+   "meanY": 94.2,
+   "p2": 26.042999267578125,
+   "p98": 236.89340209960938,
+   "clipPct": 0,
+   "crushPct": 0.02,
+   "bands": {
+    "fg_0_5": {
+     "share": 72.5,
+     "meanY": 77.3,
+     "localContrast": 6.69,
+     "sat": 0.6,
+     "warm": 39.1
+    },
+    "mid_5_15": {
+     "share": 15.5,
+     "meanY": 118.5,
+     "localContrast": 13.95,
+     "sat": 0.446,
+     "warm": 30.1
+    },
+    "far_15_40": {
+     "share": 4.3,
+     "meanY": 94.1,
+     "localContrast": 8.31,
+     "sat": 0.425,
+     "warm": 23.5
+    },
+    "bg_40_200": {
+     "share": 0.9,
+     "meanY": 118.8,
+     "localContrast": 7.91,
+     "sat": 0.242,
+     "warm": 10.5
+    },
+    "sky": {
+     "share": 6.8,
+     "meanY": 216.8,
+     "localContrast": 3.26,
+     "sat": 0.205,
+     "warm": -48.4
+    }
+   }
+  },
+  "QC_WORST_CASE": {
+   "meanY": 109.9,
+   "p2": 18.7096004486084,
+   "p98": 234.47520446777344,
+   "clipPct": 0,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 44.4,
+     "meanY": 78.2,
+     "localContrast": 5.9,
+     "sat": 0.621,
+     "warm": 28.8
+    },
+    "mid_5_15": {
+     "share": 26.2,
+     "meanY": 87.9,
+     "localContrast": 10.83,
+     "sat": 0.545,
+     "warm": 30.8
+    },
+    "far_15_40": {
+     "share": 6.6,
+     "meanY": 90.6,
+     "localContrast": 10.41,
+     "sat": 0.466,
+     "warm": 21.9
+    },
+    "bg_40_200": {
+     "share": 1.2,
+     "meanY": 104.3,
+     "localContrast": 6.67,
+     "sat": 0.299,
+     "warm": -5.5
+    },
+    "sky": {
+     "share": 21.6,
+     "meanY": 207.8,
+     "localContrast": 0.44,
+     "sat": 0.267,
+     "warm": -64.6
+    }
+   }
+  },
+  "QC_LIGHTING_COMPARISON": {
+   "meanY": 128.9,
+   "p2": 21.714799880981445,
+   "p98": 235.89920043945312,
+   "clipPct": 0.02,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 27.9,
+     "meanY": 60.7,
+     "localContrast": 3.8,
+     "sat": 0.625,
+     "warm": 36.8
+    },
+    "mid_5_15": {
+     "share": 26.8,
+     "meanY": 82.7,
+     "localContrast": 7.85,
+     "sat": 0.491,
+     "warm": 26.2
+    },
+    "far_15_40": {
+     "share": 4.6,
+     "meanY": 86.7,
+     "localContrast": 5.97,
+     "sat": 0.415,
+     "warm": 8.8
+    },
+    "bg_40_200": {
+     "share": 0.8,
+     "meanY": 106.9,
+     "localContrast": 7.53,
+     "sat": 0.254,
+     "warm": -5.9
+    },
+    "sky": {
+     "share": 39.8,
+     "meanY": 213.1,
+     "localContrast": 1.84,
+     "sat": 0.235,
+     "warm": -57.1
+    }
+   }
+  },
+  "QC_ATMOS_DEPTH": {
+   "meanY": 127.7,
+   "p2": 19.632200241088867,
+   "p98": 233.40699768066406,
+   "clipPct": 0,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 14,
+     "meanY": 96.6,
+     "localContrast": 7.59,
+     "sat": 0.541,
+     "warm": 21.1
+    },
+    "mid_5_15": {
+     "share": 41.4,
+     "meanY": 72.7,
+     "localContrast": 9.36,
+     "sat": 0.586,
+     "warm": 23.1
+    },
+    "far_15_40": {
+     "share": 5.7,
+     "meanY": 85.9,
+     "localContrast": 11.23,
+     "sat": 0.472,
+     "warm": 27.1
+    },
+    "bg_40_200": {
+     "share": 1.4,
+     "meanY": 109,
+     "localContrast": 7.11,
+     "sat": 0.272,
+     "warm": -4.4
+    },
+    "sky": {
+     "share": 37.6,
+     "meanY": 206.8,
+     "localContrast": 1.04,
+     "sat": 0.268,
+     "warm": -64.6
+    }
+   }
+  },
+  "QC_SKY_HORIZON": {
+   "meanY": 139.7,
+   "p2": 55.260398864746094,
+   "p98": 230.05799865722656,
+   "clipPct": 0.01,
+   "crushPct": 0,
+   "bands": {
+    "fg_0_5": {
+     "share": 24.3,
+     "meanY": 72.4,
+     "localContrast": 3.91,
+     "sat": 0.591,
+     "warm": 37.2
+    },
+    "mid_5_15": {
+     "share": 25.4,
+     "meanY": 93.3,
+     "localContrast": 7.34,
+     "sat": 0.476,
+     "warm": 25.4
+    },
+    "far_15_40": {
+     "share": 3,
+     "meanY": 83.1,
+     "localContrast": 5.04,
+     "sat": 0.466,
+     "warm": 19.7
+    },
+    "bg_40_200": {
+     "share": 0.5,
+     "meanY": 101.5,
+     "localContrast": 8.36,
+     "sat": 0.283,
+     "warm": -9.7
+    },
+    "sky": {
+     "share": 46.7,
+     "meanY": 204.2,
+     "localContrast": 0.32,
+     "sat": 0.267,
+     "warm": -63.9
+    }
+   }
+  }
+ }
+}

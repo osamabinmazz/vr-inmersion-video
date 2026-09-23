@@ -1,0 +1,83 @@
+ZAPICÁN — FASE 5 · RENDIMIENTO: v070 / v071 VR_BALANCED / v071 PRESENTATION
+==============================================================================
+Mismo método que la Fase 4 (p4_measure.mjs). FPS y tiempo de GPU NO se pueden
+medir en este contenedor (render por software): medir en el visor con ?perf=1
+(y ?perf=1&mode=presentation para el modo de presentación).
+
+1. DRAW CALLS Y TRIÁNGULOS (frame completo, pase principal + sombra)
+------------------------------------------------------------------------------
+cámara           calls v070    VR  PRES    tris v070        VR      PRES
+QC_GROUND               233   243   244      511,722   513,986   516,242
+QC_MID                  336   346   347      531,321   533,585   535,841
+QC_HIGH                 486   496   497      538,273   540,537   542,793
+QC_WATER                208   218   219      505,135   508,999   511,255
+QC_WORST_CASE           323   333   334      530,789   533,053   535,309
+  pase de sombra solo (calls / tris):
+    QC_GROUND        78/157,144  →  VR 88/159,408  ·  PRES 88/159,408
+    QC_MID           78/157,144  →  VR 88/159,408  ·  PRES 88/159,408
+    QC_HIGH          78/157,144  →  VR 88/159,408  ·  PRES 88/159,408
+    QC_WATER         78/157,144  →  VR 88/159,408  ·  PRES 88/159,408
+    QC_WORST_CASE    78/157,144  →  VR 88/159,408  ·  PRES 88/159,408
+
+2. BARRIDO 360° (punto de vista real)
+------------------------------------------------------------------------------
+  v070  tris prom. 502,162  máx 514,658   calls prom. 220  máx 345
+  VR    tris prom. 505,509  máx 516,922   calls prom. 230.4  máx 355
+  PRES  tris prom. 507,765  máx 519,178   calls prom. 231.4  máx 356
+
+3. CPU POR FRAME (ms, mediana; relativo)
+------------------------------------------------------------------------------
+  QC_GROUND        update 2.35 → VR 1.55 · PRES 1.5    envío 2.2 → VR 3.05 · PRES 2.05
+  QC_MID           update 1.6 → VR 1.75 · PRES 1.6    envío 3.3 → VR 8.2 · PRES 3.4
+  QC_HIGH          update 1.7 → VR 1.65 · PRES 1.5    envío 3.9 → VR 4 · PRES 3.1
+  QC_WATER         update 1.65 → VR 1.6 · PRES 1.6    envío 1.9 → VR 2.4 · PRES 2.2
+  QC_WORST_CASE    update 1.9 → VR 1.7 · PRES 1.7    envío 2.1 → VR 2.45 · PRES 3.95
+
+4. COSTO POR COMPONENTE (encendido vs apagado; raster SwiftShader = relativo)
+------------------------------------------------------------------------------
+AVISO: en v070 y en VR_BALANCED el cielo es una textura de fondo (PMREM /
+cubemap horneado), no una malla — no hay nada real que "apagar" (Δcalls=1 es
+ruido de detección). Su costo por frame es ~0: leer un texel de fondo. Los
+deltas de envío/raster de 1-7 ms para "cielo" y "bruma" en v070/VR están
+dentro del ruido de este renderizador por software (±1-2 ms de un frame a
+otro) y NO representan un costo real: la niebla es un término por fragmento
+en shaders ya compilados, sin geometría propia. El único costo de cielo
+real y medible es el de PRESENTATION, que SÍ agrega una malla en vivo
+(caja del cielo + cúpula de nubes): +2 draw calls, +2.268 triángulos,
++0,6-0,9 ms. Las sombras, en cambio, son un costo real y consistente en
+los tres casos: +78-88 draw calls, +157k-159k triángulos.
+  v070 QC_GROUND: base 220 calls, envío 4.1 ms, raster 4.1 ms
+      cielo    cuesta  calls +1, tris +12, envío +1.80 ms, raster +1.8 ms
+      bruma    cuesta  calls +0, tris +0, envío +1.60 ms, raster +1.6 ms
+      sombras  cuesta  calls +78, tris +157,144, envío +2.70 ms, raster +2.6 ms
+  v070 QC_WORST_CASE: base 321 calls, envío 9.6 ms, raster 9.6 ms
+      cielo    cuesta  calls +1, tris +12, envío +7.00 ms, raster +7.0 ms
+      bruma    cuesta  calls +0, tris +0, envío +7.20 ms, raster +7.2 ms
+      sombras  cuesta  calls +78, tris +157,144, envío +6.80 ms, raster +6.7 ms
+  VR   QC_GROUND: base 241 calls, envío 2.3 ms, raster 2.3 ms
+      cielo    cuesta  calls +1, tris +12, envío +0.20 ms, raster +0.1 ms
+      bruma    cuesta  calls +0, tris +0, envío -0.90 ms, raster -0.9 ms
+      sombras  cuesta  calls +88, tris +159,408, envío +0.50 ms, raster +0.5 ms
+  VR   QC_WORST_CASE: base 327 calls, envío 3.4 ms, raster 3.5 ms
+      cielo    cuesta  calls +1, tris +12, envío +0.80 ms, raster +0.9 ms
+      bruma    cuesta  calls +0, tris +0, envío +1.10 ms, raster +1.2 ms
+      sombras  cuesta  calls +88, tris +159,408, envío +0.90 ms, raster +1.0 ms
+  PRES QC_GROUND: base 232 calls, envío 2.2 ms, raster 2.2 ms
+      cielo    cuesta  calls +2, tris +2,268, envío +0.60 ms, raster +0.6 ms
+      bruma    cuesta  calls +0, tris +0, envío -0.60 ms, raster -0.6 ms
+      sombras  cuesta  calls +88, tris +159,408, envío +0.80 ms, raster +0.8 ms
+  PRES QC_WORST_CASE: base 326 calls, envío 3.8 ms, raster 3.8 ms
+      cielo    cuesta  calls +2, tris +2,268, envío +0.90 ms, raster +0.9 ms
+      bruma    cuesta  calls +0, tris +0, envío +1.30 ms, raster +1.2 ms
+      sombras  cuesta  calls +88, tris +159,408, envío +1.90 ms, raster +1.9 ms
+
+5. MEMORIA (estimación)
+------------------------------------------------------------------------------
+  v070  texturas 446.3 MB · geometría 9.2 MB · shadow map incl. · TOTAL 473 MB
+  VR    texturas 401.3 MB · geometría 9.2 MB · shadow map incl. · TOTAL 428 MB
+  PRES  texturas 412 MB · geometría 9.2 MB · shadow map incl. · TOTAL 438.7 MB
+  (no incluye el HDRI de v070 ni el cubemap del cielo de v071 si three no los
+   expone como textura de material; ver informe §8)
+
+6. ERRORES DE CONSOLA
+  v070 0 · VR 0 · PRES 0

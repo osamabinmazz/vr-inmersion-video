@@ -1,71 +1,15 @@
 import * as THREE from "three";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
-import { Sky } from "three/examples/jsm/objects/Sky.js";
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 // --- Renderer -------------------------------------------------------------
-// ===========================================================================
-// FASE 5 — iluminación, cielo y atmósfera: parámetros de look
-// ===========================================================================
-// Dos modos (misma luz, mismo color; cambia solo lo que cuesta):
-//   VR_BALANCED  (por defecto): cielo horneado en un cubemap una sola vez,
-//                sombras 2048 sobre ±13 m, nubes estáticas.
-//   PRESENTATION (?mode=presentation): cielo en vivo con nubes que derivan,
-//                sombras 4096 sobre ±18 m y nubes a doble resolución.
-// Sin postprocesado en ninguno de los dos: three no puede correr un
-// EffectComposer dentro de una sesión WebXR, y un grade que existiera solo en
-// las capturas mostraría algo que en las gafas no se ve. El grade vive en la
-// luz, el tone mapping y la bruma, que valen igual en pantalla y en VR.
-const LOOK_MODE = new URLSearchParams(location.search).get("mode") === "presentation" ? "PRESENTATION" : "VR_BALANCED";
-const LOOK = {
-  // Khronos PBR Neutral: conserva el tono de los materiales (ACES corría los
-  // verdes hacia el amarillo y aplastaba el cielo a blanco).
-  toneMapping: THREE.NeutralToneMapping,
-  exposure: 1.2,
-  // Tarde suave (~16:30 de otoño en el litoral): sol a 27° sobre el
-  // horizonte, detrás y a la izquierda del visor → luz de tres cuartos sobre
-  // el monte y los personajes, sombras hacia adelante-derecha.
-  sunElevationDeg: 27,
-  sunAzimuthDeg: -100, // desde la izquierda del visor, apenas por delante del través
-  sunColor: 0xfff0dc, // ~5000 K: cálido moderado, no naranja
-  // Relación sol/relleno ~3:1 (lookdev: con 2.7/0.62 las sombras quedaban
-  // lechosas y el cielo pálido; ver lookdev/phase5/LOOKDEV_NOTES.txt).
-  sunIntensity: 3.0,
-  envIntensity: 0.6, // relleno del cielo: sombras con información, no lechosas
-  hemi: { sky: 0xdfe8f0, ground: 0x6f5d40, intensity: 0.25 }, // rebote pardo del suelo
-  sky: { turbidity: 4.2, rayleigh: 1.25, mie: 0.0035, mieG: 0.78 },
-  // El cielo va por debajo de la exposición de la escena: con 1.2 de
-  // exposición y el fondo a 0.66 el cielo queda azul y sin quemarse.
-  bgIntensity: 0.66,
-  // Bruma: color del horizonte (azul grisáceo claro), densidad baja → aire,
-  // no niebla. 7 % a 10 m, 18 % a 26 m, 48 % a 88 m.
-  // Igual al blanco azulado del cielo justo sobre el horizonte, para que la
-  // llanura se funda con él sin una línea.
-  fogColor: 0xd9e2e9,
-  fogDensity: 0.0074,
-  water: { envMapIntensity: 0.5, roughness: 0.32, specularIntensity: 0.12 },
-  shadowMapSize: LOOK_MODE === "PRESENTATION" ? 4096 : 2048,
-  shadowExtent: LOOK_MODE === "PRESENTATION" ? 18 : 13,
-  cloudTex: LOOK_MODE === "PRESENTATION" ? [2048, 1024] : [1024, 512],
-  skyCubeSize: 1024,
-};
-// Lookdev en desarrollo: ?tm=aces|agx|neutral&exp=..&sunI=..&envI=..&fog=..
-if (import.meta.env.DEV) {
-  const q = new URLSearchParams(location.search);
-  const num = (k, target, key) => { if (q.has(k)) target[key] = parseFloat(q.get(k)); };
-  if (q.has("tm")) LOOK.toneMapping = { aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping }[q.get("tm")] ?? LOOK.toneMapping;
-  num("exp", LOOK, "exposure"); num("sunI", LOOK, "sunIntensity"); num("envI", LOOK, "envIntensity");
-  num("fog", LOOK, "fogDensity"); num("elev", LOOK, "sunElevationDeg"); num("azim", LOOK, "sunAzimuthDeg");
-  num("bgI", LOOK, "bgIntensity"); num("hemiI", LOOK.hemi, "intensity");
-  num("wEnv", LOOK.water, "envMapIntensity"); num("wRough", LOOK.water, "roughness"); num("wSpec", LOOK.water, "specularIntensity");
-}
-
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
-renderer.toneMapping = LOOK.toneMapping;
-renderer.toneMappingExposure = LOOK.exposure;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.92; // recupera color en el cielo de atardecer
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -80,158 +24,55 @@ const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
 // --- Scene ------------------------------------------------------------
 const scene = new THREE.Scene();
-// FASE 5: bruma de aire, no niebla. El color es el del horizonte del cielo
-// para que el paisaje se funda con él en vez de recortarse; la densidad
-// separa planos (el primer plano casi intacto, el horizonte velado a la
-// mitad). La anterior (0.013, beige) lavaba el fondo y escondía el corte del
-// plano lejano de la cámara a 100 m.
-scene.fog = new THREE.FogExp2(LOOK.fogColor, LOOK.fogDensity);
+// Niebla en tono cálido de atardecer (no el pardo oscuro anterior): funde
+// el monte lejano con el cielo del HDRI en vez de recortarlo contra él.
+scene.fog = new THREE.FogExp2(0xc8b89a, 0.013);
 
-// --- Cielo procedural + nubes (FASE 5) -------------------------------------
-// El HDRI de atardecer quedaba con el sol bajo DE FRENTE: todo lo que el
-// visor mira estaba en contraluz, el cielo se leía blanco-rosado y la escena
-// plana. Un cielo físico (Preetham, three/examples Sky) se ilumina con el
-// MISMO sol que proyecta las sombras, así cielo, luz, reflejos del agua e
-// iluminación ambiente cuentan una sola hora del día. Encima, una capa de
-// nubes de buen tiempo, sutil y que se desvanece hacia el horizonte.
-const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(
-  1,
-  THREE.MathUtils.degToRad(90 - LOOK.sunElevationDeg),
-  THREE.MathUtils.degToRad(LOOK.sunAzimuthDeg)
-);
+// --- HDRI: cielo puro de atardecer (IBL) + fondo ---------------------------
+// belfast_sunset_puresky_4k.hdr — CC0, Poly Haven.
+// Es un HDRI "pure sky": SOLO cielo, sin nada terrestre. Se eligió por eso:
+// el anterior (grasslands_sunset) era un parque real y metía galpones, un
+// alambrado y edificios en el horizonte, imposibles en una escena charrúa.
+// El horizonte lo cierra ahora vegetación nativa propia (ver "monte lejano").
+// Entre los pure sky se tomó éste por el sol dorado bajo: los de crepúsculo
+// dejaban la escena casi de noche y el de mediodía la aplanaba.
+// Rotación del cielo para traer el poniente hacia -Z (de frente a la
+// cámara). La luz direccional de más abajo se alinea con este mismo valor.
+// No de frente exacto: con el sol justo en el eje de la cámara el cielo se
+// quema y la escena pierde color. Corrido al costado entra luz rasante y
+// las sombras cruzan el cuadro en diagonal.
+const SUN_AZIMUTH = 1.75;
 
-const sky = new Sky();
-sky.scale.setScalar(800); // la caja entra entera en el plano lejano (1500 m)
-{
-  const u = sky.material.uniforms;
-  u.turbidity.value = LOOK.sky.turbidity;
-  u.rayleigh.value = LOOK.sky.rayleigh;
-  u.mieCoefficient.value = LOOK.sky.mie;
-  u.mieDirectionalG.value = LOOK.sky.mieG;
-  u.sunPosition.value.copy(SUN_DIR);
-  // Interruptor del disco solar: fuera para hornear la luz ambiente (si no,
-  // el sol se cuenta dos veces: como luz direccional y dentro del entorno).
-  u.uSunDisk = { value: 1 };
-  sky.material.fragmentShader = sky.material.fragmentShader
-    .replace("uniform vec3 up;", "uniform vec3 up;\nuniform float uSunDisk;")
-    .replace(/float sundisk = smoothstep\(([^;]+)\);/, "float sundisk = smoothstep($1) * uSunDisk;");
-}
-
-// Nubes: textura procedural sobre una cúpula. Ruido fractal continuo en la
-// costura (se muestrea sobre un cilindro), cobertura baja, bases apenas más
-// grises y desvanecido hacia el horizonte para no dibujar un borde.
-function makeCloudTexture(w, h) {
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  const img = ctx.createImageData(w, h);
-  const nA = makeNoise2D(20931);
-  const nB = makeNoise2D(55117);
-  for (let y = 0; y < h; y++) {
-    // La textura cubre SOLO la cúpula: fila 0 = cenit, última fila = horizonte.
-    const v = y / h;
-    const elev = 1 - v; // 1 cenit … 0 horizonte
-    const fade = THREE.MathUtils.smoothstep(elev, 0.02, 0.22);
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      if (fade <= 0) {
-        img.data[i + 3] = 0;
-        continue;
-      }
-      const a = (x / w) * Math.PI * 2;
-      // Cuanto más cerca del horizonte, más "aplastadas" (perspectiva real
-      // de una capa de nubes): se estira el ruido en v.
-      const sx = Math.cos(a) * 3.2, sz = Math.sin(a) * 3.2;
-      const sv = v * 7 * (1 + (1 - elev) * 0.7);
-      let n = fbm(nA, sx + sv * 0.35 + 40, sz + sv, 5) * 0.72 + fbm(nB, sx * 2.3 + 11, sz * 2.3 + sv * 2.1, 3) * 0.28;
-      const cover = THREE.MathUtils.smoothstep(n, 0.5, 0.68);
-      const alpha = cover * fade * 0.72;
-      // base apenas más gris que la cima
-      const shade = 246 - (1 - THREE.MathUtils.smoothstep(n, 0.54, 0.74)) * 22;
-      img.data[i] = shade;
-      img.data[i + 1] = shade + 2;
-      img.data[i + 2] = shade + 6;
-      img.data[i + 3] = alpha * 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.anisotropy = 4;
-  return tex;
-}
-const cloudTex = makeCloudTexture(LOOK.cloudTex[0], LOOK.cloudTex[1]);
-const clouds = new THREE.Mesh(
-  new THREE.SphereGeometry(700, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2),
-  new THREE.MeshBasicMaterial({
-    map: cloudTex,
-    transparent: true,
-    depthWrite: false,
-    fog: false,
-    side: THREE.BackSide,
-    color: 0xfffaf4, // luz de tarde sobre la nube: apenas cálida
-  })
-);
-clouds.renderOrder = -1;
-// La textura se hizo para u = azimut, v = altura; la esfera parcial de three
-// mapea v desde el cenit, igual que la textura.
-
-const skyScene = new THREE.Scene();
-skyScene.add(sky, clouds);
-
-// Luz ambiente del cielo: PMREM del cielo SIN disco solar (y con nubes).
 const pmrem = new THREE.PMREMGenerator(renderer);
-sky.material.uniforms.uSunDisk.value = 0;
-scene.environment = pmrem.fromScene(skyScene, 0.02).texture;
-scene.environmentIntensity = LOOK.envIntensity;
-sky.material.uniforms.uSunDisk.value = 1;
-pmrem.dispose();
+pmrem.compileEquirectangularShader();
+new RGBELoader().load("/assets/hdri/belfast_sunset_puresky_4k.hdr", (hdrTexture) => {
+  const envMap = pmrem.fromEquirectangular(hdrTexture).texture;
+  scene.background = envMap;
+  scene.environment = envMap;
+  // Gira el cielo para que el sol poniente quede hacia -Z, es decir de
+  // frente a la cámara y detrás de los marcadores de los personajes: si no,
+  // el atardecer cae fuera de cuadro y la escena se ve gris y plana.
+  scene.backgroundRotation = new THREE.Euler(0, SUN_AZIMUTH, 0);
+  scene.environmentRotation = new THREE.Euler(0, SUN_AZIMUTH, 0);
+  hdrTexture.dispose();
+  pmrem.dispose();
+  // FASE 4: con el entorno cambia la variante de shader de los materiales
+  // PBR; se recompilan acá para que no lo hagan la primera vez que entran en
+  // cuadro (medido: el agua tironeaba 35–80 ms al girar la cabeza).
+  renderer.compile(scene, camera);
+});
 
-if (LOOK_MODE === "VR_BALANCED") {
-  // Cielo horneado una vez en un cubemap: en el visor cuesta lo mismo que un
-  // fondo de textura (sin el shader de dispersión por píxel, por ojo).
-  const cubeRT = new THREE.WebGLCubeRenderTarget(LOOK.skyCubeSize, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
-  new THREE.CubeCamera(1, 1000, cubeRT).update(renderer, skyScene);
-  scene.background = cubeRT.texture;
-} else {
-  // En vivo: nubes que derivan (ver render loop).
-  scene.add(sky, clouds);
-}
-scene.backgroundIntensity = LOOK.bgIntensity;
-if (LOOK_MODE !== "VR_BALANCED") {
-  // En vivo el cielo es una malla: se le aplica la misma intensidad de fondo.
-  sky.material.fragmentShader = sky.material.fragmentShader.replace(
-    "gl_FragColor = vec4( retColor, 1.0 );",
-    `gl_FragColor = vec4( retColor * ${LOOK.bgIntensity.toFixed(3)}, 1.0 );`
-  );
-  clouds.material.color.multiplyScalar(LOOK.bgIntensity);
-}
-
-// Sol: la misma dirección que el cielo. Tarde suave de tres cuartos.
-const sun = new THREE.DirectionalLight(LOOK.sunColor, LOOK.sunIntensity);
-const SUN_TARGET = new THREE.Vector3(0, 0, -2); // centro de interés: claro, personajes, laguna
-sun.target.position.copy(SUN_TARGET);
-sun.position.copy(SUN_DIR).multiplyScalar(30).add(SUN_TARGET);
+// La luz direccional tiene que coincidir con el sol del HDRI (SUN_AZIMUTH),
+// o las sombras caen para un lado y el resplandor del cielo para el otro.
+const sun = new THREE.DirectionalLight(0xffd0a0, 2.1);
+sun.position.set(-6.5, 2.6, -3.5); // bajo y al costado: luz rasante de atardecer
 sun.castShadow = true;
-sun.shadow.mapSize.set(LOOK.shadowMapSize, LOOK.shadowMapSize);
-sun.shadow.camera.left = -LOOK.shadowExtent;
-sun.shadow.camera.right = LOOK.shadowExtent;
-sun.shadow.camera.top = LOOK.shadowExtent;
-sun.shadow.camera.bottom = -LOOK.shadowExtent;
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 80;
-// Sin acné ni "peter panning": sesgo mínimo + desplazamiento por normal.
-sun.shadow.bias = -0.0002;
-sun.shadow.normalBias = 0.025;
-scene.add(sun, sun.target);
-
-// Rebote del suelo: el cielo ilumina desde arriba, pero en un pastizal la
-// tierra devuelve luz parda hacia la cara inferior de copas y troncos. Sin
-// esto las sombras de las copas quedan azules y vacías.
-const hemiLight = new THREE.HemisphereLight(LOOK.hemi.sky, LOOK.hemi.ground, LOOK.hemi.intensity);
-scene.add(hemiLight);
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -10;
+sun.shadow.camera.right = 10;
+sun.shadow.camera.top = 10;
+sun.shadow.camera.bottom = -10;
+scene.add(sun);
 
 // --- Suelo PBR 4K: pradera nativa con relieve real -------------------------
 // grass_ground — CC0, Poly Haven (polyhaven.com/a/grass_ground)
@@ -392,14 +233,10 @@ const farGroundDiff = (() => {
   });
   return tex;
 })();
-farGroundDiff.repeat.set(360, 360); // FASE 5: el plano pasa de 400 a 2.400 m (misma escala de textura)
+farGroundDiff.repeat.set(60, 60);
 const farGround = new THREE.Mesh(
-  // FASE 5: 2.400 m de lado. Con el plano lejano de la cámara a 1.500 m y la
-  // bruma, el borde de la llanura ya no se ve: se funde con el horizonte.
-  new THREE.PlaneGeometry(2400, 2400),
-  // Matiz de pastizal: sin la niebla pesada, la foto de suelo repetida hasta
-  // el horizonte se leía como un desierto pardo. La pampa lejana es oliva.
-  new THREE.MeshStandardMaterial({ map: farGroundDiff, color: 0xb4b98e, roughness: 1.0, metalness: 0.0 })
+  new THREE.PlaneGeometry(400, 400),
+  new THREE.MeshStandardMaterial({ map: farGroundDiff, roughness: 1.0, metalness: 0.0 })
 );
 farGround.rotation.x = -Math.PI / 2;
 farGround.position.y = -0.015;
@@ -608,9 +445,6 @@ const waterMat = new THREE.MeshPhysicalMaterial({
   // que el agua se lea por su propio color, iluminada por el sol.
   envMapIntensity: 0.04,
   clearcoat: 0.0,
-  // FASE 5: los valores de arriba son los de Fase 1 contra el HDRI de
-  // atardecer de frente. Con el cielo nuevo (azul, sol a la espalda del visor)
-  // el reflejo ya no revienta: se reemplazan más abajo por LOOK.water.
   clearcoatRoughness: 0.55,
   // FASE 1 (reparación): 0.3 seguía sin ser suficiente. Medido con capturas
   // recortadas y comparadas lado a lado: en 0.3, 0.1 e incluso 0.05 la
@@ -746,12 +580,6 @@ const shoreGeo = new THREE.BufferGeometry();
 // oclusión. El barro opaco de una orilla no tiene brillo apreciable desde
 // este ángulo, así que un material solo difuso es a la vez el más fiel y el
 // más barato — también en el visor.
-// FASE 5: el agua refleja el cielo nuevo (reflejo suave del gradiente, con
-// fresnel) en vez de ser una placa opaca; roughness bajo pero no espejo.
-waterMat.envMapIntensity = LOOK.water.envMapIntensity;
-waterMat.roughness = LOOK.water.roughness;
-waterMat.specularIntensity = LOOK.water.specularIntensity;
-
 const shoreMat = new THREE.MeshLambertMaterial({
   color: 0xffffff,
   vertexColors: true,
@@ -4995,7 +4823,7 @@ const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
   0.05,
-  1500 // FASE 5: antes 100 m — el "horizonte" era el recorte del plano lejano
+  100
 );
 camera.position.set(0, 1.6, 4);
 cameraRig.add(camera);
@@ -5029,15 +4857,6 @@ const QC_CAMERAS = {
   // triángulos, ~300k con sombras, 250 draw calls). En el mismo cuadro entran
   // laguna, juncal, monte, arbustos, plano medio, fondo y horizonte.
   QC_WORST_CASE: { pos: [-3, 2.2, 9], look: [4, 0.8, -2] },
-  // FASE 5 — lookdev de luz y atmósfera.
-  // Modelado de formas: monte, árbol hero y personajes con la luz de tres
-  // cuartos, desde el punto de vista real.
-  QC_LIGHTING_COMPARISON: { pos: [0, 1.6, 4], look: [-4, 1.6, -3] },
-  // Profundidad aérea: el eje más largo de la escena, de primer plano al
-  // horizonte.
-  QC_ATMOS_DEPTH: { pos: [-1.5, 3.4, 12.5], look: [-2, 1.2, -30] },
-  // Relación cielo/horizonte: mitad superior cielo, línea de monte abajo.
-  QC_SKY_HORIZON: { pos: [0, 1.6, 4], look: [2, 5, -40] },
 };
 
 if (import.meta.env.DEV) {
@@ -5184,9 +5003,7 @@ function makeLabelSprite(text) {
   ctx.textBaseline = "middle";
   ctx.fillText(text, canvas.width / 2, canvas.height / 2);
   const tex = new THREE.CanvasTexture(canvas);
-  // FASE 5: sin bruma ni tone mapping — el rótulo es interfaz y tiene que
-  // leerse igual con cualquier luz.
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, fog: false, toneMapped: false });
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
   const sprite = new THREE.Sprite(mat);
   sprite.scale.set(1.6, 0.4, 1);
   return sprite;
@@ -5382,7 +5199,6 @@ renderer.setAnimationLoop((time) => {
   // FASE 4: pasto, cuerpos de arbusto, copas del monte y sus hojas se mecen
   // en el vertex shader (windify); acá solo avanza el reloj del viento.
   windUniforms.uWindTime.value = t;
-  if (LOOK_MODE === "PRESENTATION") cloudTex.offset.x = t * 0.0006; // FASE 5: nubes que derivan
 
   // Las hojas individuales tienen su propio balanceo (más rápido y liviano
   // que el del cuerpo del arbusto) — no siguen exactamente la rotación del

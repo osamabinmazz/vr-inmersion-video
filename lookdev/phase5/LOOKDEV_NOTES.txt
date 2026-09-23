@@ -1,0 +1,54 @@
+ZAPICÁN — FASE 5 · NOTAS DE LOOKDEV
+==============================================================================
+Cómo se llegó a los valores de LOOK (viewer/src/main.js, arriba de todo).
+Cada iteración se midió con p5_look.mjs: luminancia media (Y, 0–255),
+percentiles 2/98, % de píxeles quemados (Y ≥ 250) y empastados (Y ≤ 8), y
+contraste local por franja de distancia (0–5 m, 5–15, 15–40, 40+, cielo).
+En desarrollo cada parámetro se puede probar por URL sin tocar el código:
+  ?tm=aces|agx|neutral  &exp=  &sunI=  &envI=  &hemiI=  &bgI=  &fog=
+  &elev=  &azim=  &wEnv=  &wRough=  &wSpec=   (y ?mode=presentation)
+
+1. Punto de partida (v070)
+   HDRI de atardecer con el sol bajo DE FRENTE (contraluz), niebla beige
+   0.013, ACES 0.92. Cielo Y 205–243 (casi blanco), hasta 7,5 % de píxeles
+   quemados (QC_MID/QC_HIGH), negros levantados (p2 = 24–50) y el primer
+   plano con MENOS contraste local que el plano medio.
+
+2. Cielo procedural + sol de tarde a 27°, azimut -52° (detrás-izquierda)
+   Cielo azul, cero quemados. Pero luz casi frontal: las sombras caen detrás
+   de los objetos, el primer plano quedó plano (contraste local 4,7).
+
+3. Azimut: -80°, -100°, -125° comparados
+   -100° (desde la izquierda del visor, apenas por delante del través) da
+   el mejor modelado de troncos y copas sin poner a los personajes en
+   contraluz; las sombras cruzan el cuadro hacia la derecha.
+
+4. Tone mapping (con azimut -100°)
+   ACES 0.95: más contraste de medios tonos, pero cielo lavado y verdes que
+   viran a amarillo.  AgX 1.15: el más plano de los tres (p2 = 40–83).
+   Neutral (Khronos PBR) con relleno bajo: cielo azul rico, color de los
+   materiales intacto → ELEGIDO.
+
+5. Relación sol / relleno
+   sol 3.2 / cielo 0.42 / hemisferio 0.18: sombras con peso pero hasta 1,5 %
+   empastado (QC_WATER).  sol 3.0 / cielo 0.55–0.6 / hemisferio 0.25:
+   empastado ≤ 0,6 % → ELEGIDO.
+
+6. Exposición y fondo
+   Con exposición 0.95 la escena quedaba pesada (QC_HIGH Y = 96). Exposición
+   1.2 con el cielo a 0.66 de intensidad: QC_HIGH Y = 105, cielo sin
+   quemarse (Y ≈ 205–230), 0 % empastado → ELEGIDO.
+
+7. Bruma y horizonte
+   Color de la bruma = blanco azulado del cielo sobre el horizonte
+   (0xd9e2e9); con uno más oscuro aparecía una línea donde la llanura
+   tocaba el cielo. Densidad 0.0074 (7 % a 10 m, 48 % a 88 m). El plano
+   lejano de la cámara pasó de 100 m a 1.500 m y la llanura de 400 a
+   2.400 m: ya no hay recorte en el horizonte, se funde en la bruma.
+   La llanura lejana lleva un matiz oliva (sin la niebla pesada, la foto de
+   suelo repetida se leía como un desierto pardo).
+
+8. Nubes
+   Primera versión: invisibles (umbral de cobertura alto y la textura
+   mapeada a la mitad de la cúpula). Corregido; después se redujo el
+   estiramiento y se aclaró la base (se leían pardas).

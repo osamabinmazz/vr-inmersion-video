@@ -1,0 +1,216 @@
+ZAPICÁN — EL TERRITORIO DESPIERTA
+FASE 5 — ILUMINACIÓN, CIELO, ATMÓSFERA Y PROFUNDIDAD · INFORME
+==============================================================================
+Versión de trabajo : snapshots/ZAPICAN_v071_lighting_atmosphere.js
+Backup previo       : snapshots/ZAPICAN_v070_before_lighting_atmosphere.js (= v061)
+Diagnóstico previo  : reports/phase5/LIGHTING_AUDIT.txt
+Notas de lookdev     : lookdev/phase5/LOOKDEV_NOTES.txt (iteraciones y por qué)
+Rendimiento         : performance/phase5/PERFORMANCE_BEFORE_AFTER.txt (+ JSON)
+Comparaciones       : comparisons/phase5/ (BEFORE_/AFTER_*_<cámara>.jpg, COMPARE_*.jpg)
+Métricas visuales   : comparisons/phase5/VISUAL_METRICS.txt
+
+No se tocó: distribución ecológica, posiciones de personajes, composición,
+assets aprobados, fauna, mecánicas, estructura narrativa. Se verificó contra
+v070: ninguna posición de vegetación, tronco o fauna cambió (mismo método de
+huella que en la Fase 4).
+
+------------------------------------------------------------------------------
+1. CONDICIÓN DE LUZ ELEGIDA
+------------------------------------------------------------------------------
+TARDE SUAVE — sol a 27° de elevación, azimut -100° (desde la izquierda del
+visor, apenas por delante del través). Justificación:
+  - Mañana/tarde suave son las dos opciones que favorecen lectura de
+    vegetación y agua sin caer en dramatismo; se eligió tarde por el tono
+    ya establecido en la paleta de la escena (Fases 1-4 asumen un
+    atardecer templado, no un mediodía).
+  - El HDRI de v070 tenía el sol EN CONTRALUZ (de frente al visor): todo lo
+    que se mira muestra su cara en sombra. Con el sol a 27°/-100° la luz
+    llega de tres cuartos: modela troncos y copas, no esconde a los
+    personajes (que miran hacia -Z, con el sol a su izquierda-espalda) y
+    el agua recibe luz oblicua en vez de contraluz.
+  - Se probaron -52°, -80°, -100° y -125° (ver LOOKDEV_NOTES §3): -100° fue
+    el único que deja sombras hacia adelante-derecha sin poner a los
+    personajes ni al primer plano en contraluz.
+  - Se descartó mediodía (aplana), atardecer ultra-naranja (fantasía) y
+    contraluz extremo (ya presente en v070, es lo que se corrige).
+
+------------------------------------------------------------------------------
+2. CIELO
+------------------------------------------------------------------------------
+Se reemplazó el HDRI fotográfico (belfast_sunset_puresky_4k.hdr, 33 MB) por
+un cielo físico procedural (three/examples Sky, modelo Preetham/Nishita) con
+turbidity 4.2, rayleigh 1.25, mie 0.0035 — cielo despejado, sin bruma alta.
+Se le suma una capa de nubes de buen tiempo, textura generada por ruido
+fractal (fbm, dos octavas de frecuencia distinta), cobertura baja (~15-20%
+del cielo visible), que se desvanece hacia el horizonte sin borde duro.
+
+Por qué procedural y no otro HDRI: el HDRI fotográfico trae UNA hora del día
+fija y no se puede re-iluminar sin volver a hornear todo el IBL; con el
+cielo físico el sol de la luz direccional y el sol del cielo SON el mismo
+vector (SUN_DIR), así que el color del cielo, el reflejo del agua y la luz
+ambiente cuentan una sola historia coherente. Es además la técnica estándar
+para escenas de exterior en tiempo real (Preetham 1999, usado en la mayoría
+de motores).
+
+Modo VR_BALANCED: el cielo (+ nubes) se hornea UNA vez en un cubemap al
+cargar la escena (WebGLCubeRenderTarget 1024, HalfFloat) y se asigna como
+scene.background: en el visor cuesta lo mismo que una textura de fondo, cero
+draw calls extra por frame.
+Modo PRESENTATION: el cielo queda como malla en vivo (permite que las nubes
+deriven con el viento); cuesta 2 draw calls y ~2.300 triángulos más (medido,
+tabla §7).
+
+------------------------------------------------------------------------------
+3. EXPOSICIÓN Y TONE MAPPING
+------------------------------------------------------------------------------
+Tone mapping: ACESFilmicToneMapping → NeutralToneMapping (Khronos PBR
+Neutral). Se probaron ACES, AgX y Neutral (LOOKDEV_NOTES §4): ACES corría
+los verdes hacia el amarillo y aplastaba el cielo; AgX fue el más plano de
+los tres (percentil 2 subía a 40-83, sin negros). Neutral conserva el matiz
+de los materiales y deja que el contraste salga de la luz, no del operador.
+
+Exposición: 0.92 → 1.2 (más luz general; se compensa con la intensidad del
+FONDO del cielo en 0.66 para que no se queme — ver LOOKDEV_NOTES §6).
+Intensidad del entorno (IBL/relleno): 0.62 → 0.6 con sol en 3.0 (antes 2.1)
+y hemisferio (rebote del suelo) en 0.25 — relación luz/relleno más marcada
+que reduce el "lavado" sin bloquear sombras.
+
+------------------------------------------------------------------------------
+4. CONTRASTE
+------------------------------------------------------------------------------
+Medido como contraste local (diferencia media de cada píxel con sus vecinos
+a 2 px) por franja de distancia. Antes, el PRIMER PLANO tenía MENOS
+contraste que el plano medio en 8 de 11 cámaras (jerarquía invertida). Con
+la luz de tres cuartos, el ratio primer-plano/fondo mejora en las cámaras de
+composición principal (QC_GROUND 1.05→ se mantiene por el suelo raso sin
+sombras propias; QC_TREE_CLOSE, QC_BUSH_CLOSE y QC_HERO_WATER_EDGE, donde SÍ
+hay volumen para modelar, el primer plano gana peso relativo — tabla
+completa en VISUAL_METRICS.txt). No se aplicó ningún operador de contraste
+extra (curvas, S-curve): todo el cambio sale de la dirección de luz y la
+relación sol/relleno.
+
+------------------------------------------------------------------------------
+5. ATMÓSFERA Y PROFUNDIDAD AÉREA
+------------------------------------------------------------------------------
+Niebla FogExp2: color beige (0xc8b89a, pesada) → blanco azulado igual al
+horizonte del cielo (0xd9e2e9); densidad 0.013 → 0.0074 (más sutil: 7% a
+10 m, 18% a 26 m, 48% a 88 m — antes 13%/32%/68% en esos mismos puntos).
+Plano lejano de la cámara: 100 m → 1.500 m. Llanura lejana: 400×400 m →
+2.400×2.400 m, con un matiz oliva (0xb4b98e) para que no se lea como
+desierto pardo sin la niebla pesada de antes.
+Resultado: el horizonte de la Fase 4 ya no se recorta contra un plano
+vacío ni contra niebla beige — se funde con el cielo (ver COMPARE_QC_
+SKY_HORIZON.jpg y COMPARE_QC_ATMOS_DEPTH.jpg).
+
+------------------------------------------------------------------------------
+6. AGUA
+------------------------------------------------------------------------------
+Fase 1 había apagado casi del todo el reflejo del agua (envMapIntensity
+0.04, specularIntensity 0.02, roughness 0.78) porque el HDRI de frente
+quemaba la lámina a blanco. Con el cielo nuevo (azul, sol a la espalda del
+visor) eso ya no pasa: envMapIntensity 0.04→0.5, specularIntensity 0.02→
+0.12, roughness 0.78→0.32. El agua ahora refleja el gradiente del cielo con
+fresnel (más reflejo al ras, más color propio de frente) en vez de ser una
+placa opaca — ver COMPARE_QC_WATER.jpg. No se tocó el mapa de profundidad
+ni el color de fondo del agua (Fase 1), solo su respuesta a la luz.
+
+------------------------------------------------------------------------------
+7. SOMBRAS
+------------------------------------------------------------------------------
+Mismo sistema de culling de sombra de la Fase 4 (solo las copas dentro del
+mapa de sombra del sol proyectan). Se agregó bias (-0.0002) y normalBias
+(0.025) contra shadow acne, que no estaban configurados en v070. Frustum de
+sombra: ±13 m en VR_BALANCED (antes ±10 m, insuficiente para la nueva
+dirección de luz — se verificó que a ±10 m el borde del frustum cortaba
+sombras del monte más próximo), 2048px; ±18 m / 4096px en PRESENTATION.
+
+------------------------------------------------------------------------------
+8. DOS MODOS
+------------------------------------------------------------------------------
+                          VR_BALANCED              PRESENTATION (?mode=presentation)
+Cielo                     cubemap horneado (1x)    malla en vivo, nubes derivan
+Sombra                    2048px, ±13 m            4096px, ±18 m
+Nubes                     1024×512                 2048×1024
+Diferencia de costo       — (línea base)           +2 draw calls, +2.268 tris,
+                                                    shadow map 4x más pesado
+Visualmente               casi idénticos (Y medio difiere <2 en 10/11 cámaras;
+                          la textura de nubes es la misma generador, solo
+                          resolución)
+
+------------------------------------------------------------------------------
+9. MÉTRICAS (medidas)
+------------------------------------------------------------------------------
+Luminancia y exposición (11 cámaras, tabla completa en VISUAL_METRICS.txt):
+  - Píxeles quemados (Y≥250): QC_MID 7,38%→0%, QC_HIGH 7,53%→0%. En las 11
+    cámaras, el AFTER no supera 0,08% de quemado (antes hasta 7,53%).
+  - Percentil 2 (negro más oscuro visible): subía a Y 45-83 en varias
+    cámaras (imagen lechosa); ahora baja a Y 12-31 en la mayoría — hay
+    sombra real sin empastarse (crush 0-1,5%, revisar QC_WATER más abajo).
+  - Cielo: de blanco-rosado (Y 183-243) a azul con variación (Y 194-231).
+
+Draw calls y triángulos (pase completo con sombra; tabla en PERFORMANCE_
+BEFORE_AFTER.txt): sin cambio relevante fuera del cielo (§7): 233→243 en QC_GROUND,
+323→333 en QC_WORST_CASE. La geometría de la Fase 4 no se tocó.
+
+FPS / GPU: NO medibles en este contenedor (SwiftShader). Medir en el visor
+con ?perf=1 (agregado en Fase 4) y ?perf=1&mode=presentation para comparar
+los dos modos.
+
+------------------------------------------------------------------------------
+10. PROBLEMA DETECTADO Y PENDIENTE: QC_WATER Y QC_BUSH_CLOSE
+------------------------------------------------------------------------------
+QC_WATER y QC_BUSH_CLOSE muestran ahora crush 0,6-1,5% (antes 0%): son las
+sombras proyectadas por los sauces y arbustos hero sobre el propio primer
+plano, ahora más oscuras al no tener el relleno alto de antes. Es una
+sombra CON información (no un negro plano — el bias/normalBias evita acné),
+pero conviene revisarla con más detalle en una pasada futura si se nota
+excesiva en el visor.
+
+------------------------------------------------------------------------------
+11. CRITERIO DE ACEPTACIÓN
+------------------------------------------------------------------------------
+1. Escena más atractiva ........................... SÍ (cielo, agua, contraste)
+2. Separación foreground/midground/background ...... SÍ (bruma + tono del fondo)
+3. Cielo acompaña ................................... SÍ (físico, coherente con el sol)
+4. Agua se integra .................................. SÍ (reflejo fresnel controlado)
+5. Horizonte gana profundidad ....................... SÍ (bruma + plano lejano 1.500 m)
+6. Iluminación modela mejor los assets .............. SÍ (luz de tres cuartos, no contraluz)
+7. Personajes legibles ............................... SÍ (rótulos sin niebla/tonemap,
+                                                          sol no los pone en contraluz)
+8. Resultado natural ................................. SÍ (sin HDR artificial, sin bloom,
+                                                          sin viñeta, sin grade fuerte)
+9. Rendimiento VR razonable .......................... PROBABLE, sin confirmar en headset:
+                                                          draw calls y triángulos casi sin
+                                                          cambio; falta medir FPS reales.
+
+------------------------------------------------------------------------------
+12. NO SE HIZO (por pedido)
+------------------------------------------------------------------------------
+Fauna, historia, ubicación de personajes, vegetación, efectos mágicos,
+partículas pesadas, look de fantasía, filtros exagerados. Sin postprocesado
+(EffectComposer): three no lo corre dentro de una sesión WebXR y hubiera
+sido un grade que solo existiría en las capturas, no en las gafas — el
+"grade" de esta fase vive en la luz, el tone mapping y la bruma, que valen
+igual en pantalla y en VR.
+
+------------------------------------------------------------------------------
+13. LOS 5 ELEMENTOS QUE MÁS LIMITAN EL REALISMO AHORA
+------------------------------------------------------------------------------
+1. GEOMETRÍA FACETADA EN LOS HERO. Los assets HERO de Fase 2 (ceibo, sauces,
+   arbusto y penachos hero) siguen con icosaedros sin soldar: con la luz
+   nueva, más direccional, el facetado se nota MÁS que antes (una luz de
+   contraluz lo disimulaba). Es el mismo pendiente de la Fase 4, ahora más
+   visible.
+2. SOMBRA ÚNICA DE DISTANCIA CORTA. El frustum de sombra (±13 m) no cubre
+   el horizonte de la Fase 4: esos árboles no proyectan ni reciben sombra,
+   se leen "planos" comparados con el monte cercano.
+3. AGUA SIN REFLEJO DE GEOMETRÍA. El límite técnico de Fase 1 sigue: el
+   agua refleja el ENVIRONMENT MAP (cielo), no los sauces que tiene encima.
+   Ahora que el reflejo es visible, esa ausencia se nota más.
+4. HOJAS COMO TARJETAS PLANAS. Sigue pendiente desde Fase 3/4: con luz
+   direccional marcada, la falta de grosor y de sombra propia en las
+   tarjetas de hoja es más evidente que con luz difusa.
+5. NUBES SIN VOLUMEN. Son una textura 2D sobre una cúpula: funcionan bien
+   de lejos pero no tienen la profundidad ni la sombra propia de una nube
+   volumétrica; a full pantalla en VR (headset) podría notarse más que en
+   captura plana.

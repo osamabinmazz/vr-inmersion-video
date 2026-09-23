@@ -1,0 +1,52 @@
+ZAPICÁN — FASE 5 · LIGHTING_AUDIT (diagnóstico de v070, antes de tocar nada)
+==============================================================================
+Medido con p5_look.mjs sobre v070 (= v061 aprobada): captura de cada cámara
+más una pasada de profundidad propia. Y = luminancia (0–255, luma Rec.709
+sobre la imagen final). "Contraste local" = diferencia media de cada píxel con
+sus vecinos a 2 px (textura / modelado que el ojo puede leer), por franja de
+distancia a la cámara.
+
+cámara                       Y    p2   p98  quem.% empast.% cielo Y   contraste local  0–5m / 5–15 / 15–40 / 40+
+QC_GROUND                155.1    45   248    1.22        0   223.6   7.06 / 9.5 / 7.21 / 6.71
+QC_MID                   138.6    35   254    7.38        0   240.7   6.85 / 9.63 / 10.31 / 5.88
+QC_HIGH                  122.6    35   255    7.53        0   226.9   4.34 / 9.63 / 8.08 / 2.97
+QC_WATER                 105.5    24   250    1.98        0     242   9.22 / 13.71 / 5.82 / 7.9
+QC_TREE_CLOSE            137.6    34   248    1.11        0   235.8   9.07 / 12 / 4.92 / 6.64
+QC_BUSH_CLOSE            111.5    35   214       0        0   182.4   6.9 / 12.05 / 5.76 / 6.36
+QC_HERO_WATER_EDGE       104.4    24   245    0.56        0   229.9   7.72 / 13.79 / 5.63 / 6.14
+QC_WORST_CASE            116.8    33   249     1.6        0   230.9   6.65 / 11.31 / 10.76 / 5.78
+QC_LIGHTING_COMPARISON   152.9    50   237    0.21        0   216.7   7.26 / 10.35 / 7.02 / 6.08
+QC_ATMOS_DEPTH           140.7    35   250    2.08        0   224.2   8.16 / 9.28 / 12.84 / 6.12
+QC_SKY_HORIZON           162.8    45   249    1.71        0   225.7   7.04 / 9.77 / 7.27 / 7.08
+
+HALLAZGOS
+------------------------------------------------------------------------------
+1. CONTRALUZ. El sol del HDRI está bajo (19°) y DE FRENTE al visor (-Z),
+   detrás de los personajes. Todo lo que se mira muestra su cara en sombra:
+   formas sin modelado, lectura por silueta. Las sombras caen hacia la
+   cámara y quedan escondidas detrás de cada objeto.
+2. CIELO LAVADO. Cielo Y 183–243: blanco-rosado casi uniforme. En QC_MID y
+   QC_HIGH hasta 7,5 % de la imagen está quemada (Y ≥ 250). No aporta
+   variación ni profundidad; "roba" luminancia a todo lo demás.
+3. NEGROS LEVANTADOS / IMAGEN LECHOSA. El 2 % más oscuro de la imagen está en
+   Y 24–50: no hay negros ni sombras profundas. Causa: relleno ambiente del
+   HDRI muy alto frente a un sol débil (2.1) y niebla beige densa.
+4. JERARQUÍA INVERTIDA. El primer plano (0–5 m) tiene MENOS contraste local
+   (≈7) que el plano medio (9–13) en casi todas las cámaras. Debería ser al
+   revés: el ojo va primero a lo que tiene más contraste.
+5. HORIZONTE FALSO. La cámara corta a 100 m y la niebla (0.013, beige) lo
+   tapa: a 30 m ya cubre 32 %, a 88 m 68 %. El horizonte de la Fase 4 se ve
+   color arena, sin la perspectiva aérea fría que da la distancia real.
+6. FONDO Y FRENTE PARECIDOS. Con la niebla beige y la luz de contraluz, fondo
+   y plano medio comparten valor y temperatura: poca separación de planos.
+7. AGUA SIN LECTURA. Por la Fase 1 (reflejo 0.04, especular 0.02, roughness
+   0.78) la laguna es una placa gris-verde opaca: no devuelve cielo, no hay
+   fresnel; se lee como un plano aislado. Era la decisión correcta contra
+   el HDRI de frente (se quemaba), pero deja el agua muerta.
+8. SOMBRAS. Frustum de ±10 m alrededor del origen con sol rasante: se estira
+   ~30 m sobre el suelo en la dirección del sol → texels largos y bordes
+   dentados; sin bias configurado.
+9. PERSONAJES / RÓTULOS. Legibles (texto claro sobre fondo oscuro), pero los
+   rótulos reciben niebla y tone mapping: cambian con la luz.
+10. FOCO. Sin jerarquía: todo el cuadro con el mismo peso tonal.
+

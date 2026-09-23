@@ -1,0 +1,66 @@
+{
+ "QC_GROUND": {
+  "base": {
+   "calls": 241,
+   "tris": 513880,
+   "submitMs": 2.3,
+   "rasterMs": 2.3
+  },
+  "sinBruma": {
+   "calls": 241,
+   "tris": 513880,
+   "submitMs": 3.2,
+   "rasterMs": 3.2
+  },
+  "sinCielo": {
+   "calls": 240,
+   "tris": 513868,
+   "submitMs": 2.1,
+   "rasterMs": 2.2
+  },
+  "sinSombras": {
+   "calls": 153,
+   "tris": 354472,
+   "submitMs": 1.8,
+   "rasterMs": 1.8
+  },
+  "base2": {
+   "calls": 241,
+   "tris": 513880,
+   "submitMs": 3.3,
+   "rasterMs": 3.3
+  }
+ },
+ "QC_WORST_CASE": {
+  "base": {
+   "calls": 327,
+   "tris": 532813,
+   "submitMs": 3.4,
+   "rasterMs": 3.5
+  },
+  "sinBruma": {
+   "calls": 327,
+   "tris": 532813,
+   "submitMs": 2.3,
+   "rasterMs": 2.3
+  },
+  "sinCielo": {
+   "calls": 326,
+   "tris": 532801,
+   "submitMs": 2.6,
+   "rasterMs": 2.6
+  },
+  "sinSombras": {
+   "calls": 239,
+   "tris": 373405,
+   "submitMs": 2.5,
+   "rasterMs": 2.5
+  },
+  "base2": {
+   "calls": 327,
+   "tris": 532813,
+   "submitMs": 2.4,
+   "rasterMs": 2.5
+  }
+ }
+}
