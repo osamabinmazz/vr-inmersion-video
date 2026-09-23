@@ -1,0 +1,176 @@
+ZAPICÁN — FASE 4 · MIDGROUND_AUDIT
+==============================================================================
+Auditoría del plano medio y del fondo sobre v060 (= v051 aprobada), hecha
+antes de tocar nada, y clasificación de cada asset. Los datos de zonas y
+triángulos salen de la propia escena (window.__tiers / __vegCounts en DEV),
+no de estimaciones.
+
+------------------------------------------------------------------------------
+1. ZONIFICACIÓN VISUAL (cómo se clasifica)
+------------------------------------------------------------------------------
+No se usa la distancia en metros sola. Para cada ejemplar se calcula:
+
+  tamaño aparente = ángulo vertical que ocupa desde el punto de vista fijo
+                    (0, 1.6, 4), en grados
+  relevancia      = 1.0 en el cono frontal (el visor arranca mirando a -Z:
+                    monte + personajes) … 0.8 a la espalda
+  puntaje         = tamaño aparente × relevancia
+
+  HERO            elegidos en Fase 2 (no se reclasifican)
+  FOREGROUND      puntaje > 20°   (> ~400 px en Quest 2/3, ~20 px/°)
+  MIDGROUND_NEAR  8° – 20°        (160–400 px)
+  MIDGROUND_FAR   3,5° – 8°       (70–160 px)
+  BACKGROUND      < 3,5°          (< 70 px)
+  HORIZON         > 24 m
+
+"Cercanía al recorrido del usuario" y "posibilidad de acercarse": la escena
+no tiene locomoción (cámara fija, ver TODO del README), así que el recorrido
+ES el punto de vista y la distancia a él ya lo contempla. Si se agrega
+locomoción, esta clasificación deja de valer y hay que pasar a LOD en vivo
+(ver PHASE4_MIDGROUND_REPORT, "LOD").
+
+Resultado de la clasificación (v061):
+
+  árboles del monte (62)    MIDGROUND_NEAR 9 · MIDGROUND_FAR 53
+  arbustos (110)            HERO 3 · FOREGROUND 1 · NEAR 4 · FAR 72 · BACKGROUND 30
+  cortaderas (26)           HERO 2 · NEAR 20 · FAR 4
+  ombúes (3)                MIDGROUND_NEAR 3
+  horizonte (440)           HORIZON 440
+  fondo 18–25 m (98, nuevo) NEAR 8 · FAR 34 · BACKGROUND 34 · HORIZON 22
+
+------------------------------------------------------------------------------
+2. PROBLEMAS DETECTADOS EN v060
+------------------------------------------------------------------------------
+A. Horizonte (bandas 26–88 m, 440 árboles)
+   - SILUETAS CLONADAS: los 440 son el mismo icosaedro de 20 caras.
+   - COPAS GEOMÉTRICAS: flatShading → poliedros facetados, lo más "low poly"
+     de toda la escena (se ve en QC_GROUND, QC_MID, QC_HIGH).
+   - MATERIAL PLANO: un único verde por banda, sin variación por árbol.
+   - LÍNEA DE COPAS: alturas en campana muy parejas; se lee como empalizada.
+   - AGRUPAMIENTO: la máscara de ruido ya abría huecos (bien), pero todas las
+     masas eran del mismo tipo: ni emergentes ni grupos bajos.
+
+B. Llanura 17,5–26 m
+   - HUECO ARTIFICIAL: entre el último árbol del monte (17,5 m) y la primera
+     banda del horizonte (26 m) no había NADA. Desde QC_HIGH/QC_MID se ve un
+     anillo de tierra vacía que corta la continuidad del paisaje.
+
+C. Árboles del monte (espinillo/algarrobo, 62)
+   - SILUETAS CLONADAS: una sola copa (icosaedro de 320 caras deformado)
+     repetida 62 veces; solo cambia la escala.
+   - COPAS GEOMÉTRICAS: normales por cara (el icosaedro de three no viene
+     indexado) → facetado visible bajo las hojas.
+   - Sin estructura: la copa flotaba sobre un palo, sin ramas visibles.
+   - Hojas de copa (5.456 tarjetas): uniformes para cerca y lejos; a 15 m una
+     hoja de 34 cm son pocos píxeles que solo parpadean (aliasing en VR).
+
+D. Arbustos no-hero (107)
+   - "BOLAS VERDES": una esfera facetada por especie (5 geometrías para 107
+     ejemplares, ~22 copias idénticas de cada una).
+   - Rotación libre en los 3 ejes: servía para esconder que era una esfera;
+     no permite una forma con base.
+   - 5 InstancedMesh con sombra = 10 draw calls.
+
+E. Cortaderas no-hero (24)
+   - Penacho: poliedro blanco facetado (flatShading); todos del mismo blanco.
+   - Hojas: misma complejidad a 3 m que a 14 m.
+
+F. Pasto (2.600 mechones)
+   - Color casi uniforme: a media distancia no hay manchas, se ve "alfombra".
+   - A más de ~8 m el mechón (3 cm de ancho) es una astilla de medio píxel.
+
+G. Ombú (3, plano medio 7,5–14 m)
+   - Copa facetada (flatShading) y 24 mallas sueltas con sombra = 48 draw
+     calls para 3 árboles.
+
+H. Viento
+   - Todo en CPU: ~8.200 matrices recompuestas y subidas a la GPU por frame
+     solo en pasto (2.600), hojas de copa (5.456), copas (62) y cuerpos de
+     arbusto (110), con la misma amplitud a 2 m que a 17 m.
+
+I. Texturas
+   - La llanura lejana (farGround) cargaba una SEGUNDA copia del difuso 4K del
+     suelo (~85 MB con mipmaps) para un plano que se ve a más de 15 m.
+
+J. Rocas
+   - No hay rocas en la escena (se verificó: ningún sistema de piedras). No se
+     agregan: no fueron pedidas y no hay referencia de qué piedra corresponde
+     al lugar.
+
+K. Densidad / escala
+   - No se detectó densidad excesiva ni escalas antinaturales en el plano
+     medio: la distribución ecológica aprobada (manchas, claros, máscaras) se
+     mantiene y NO se re-randomizó.
+
+------------------------------------------------------------------------------
+3. CLASIFICACIÓN POR ASSET
+------------------------------------------------------------------------------
+Asset                      Zona dominante   Clase             Qué se hizo
+--------------------------------------------------------------------------------
+Horizonte (440)            HORIZON          LOD_REPLACE +     4 siluetas de lóbulos
+                                            VARIANT           lisos, tono por árbol,
+                                                              emergentes y grupos
+                                                              bajos. 1 malla horneada.
+Fondo 18–25 m (98)         BACKGROUND       BACKGROUND_ONLY   NUEVO: masas bajas y
+                                            (nuevo)           árboles chicos en
+                                                              manchas con claros.
+Llanura lejana             BACKGROUND       BACKGROUND_ONLY   textura 4K → 1K.
+Árboles del monte (62)     MIDGROUND_FAR    VARIANT +         5 formas de copa ×
+                                            UPGRADE           2 niveles de detalle,
+                                                              ramas en los cercanos,
+                                                              AO horneado.
+Hojas de copa del monte    MIDGROUND        LOD_REPLACE       sobre los lóbulos;
+                                            (raleo)           raleo 75 % en FAR.
+Arbustos no-hero (107)     MIDGROUND_FAR    VARIANT +         3 masas de lóbulos por
+                                            UPGRADE           especie × 4 niveles,
+                                                              2 mallas horneadas.
+Hojas de arbusto no-hero   MIDGROUND        VARIANT           reubicadas sobre la
+                                                              masa de lóbulos.
+Cortaderas no-hero (24)    MIDGROUND_NEAR   UPGRADE +         penacho liso con matiz
+                                            LOD_REPLACE       por mata; en FAR, 10
+                                            (lejanas)         hojas más anchas.
+Pasto (2.600)              MIDGROUND        VARIANT +         manchas de tono; raleo
+                                            LOD_REPLACE       hasta 38 % más allá de
+                                                              8 m y ensanchado.
+Ombú (3)                   MIDGROUND_NEAR   UPGRADE           copa lisa; base, fuste y
+                                                              copa en 2 lotes.
+Juncos/totoras (540)       MIDGROUND_NEAR   KEEP              ya son clusters de 18 con
+                                                              altura variable, 12 tris
+                                                              cada uno; incluyen el
+                                                              sector hero de Fase 2.
+Gramíneas de humedal (900) MIDGROUND_NEAR   KEEP              instanciadas, baratas.
+Cobertura de suelo (3.200) FOREGROUND/MID   KEEP              no se lee a distancia.
+Ceibos (3) / sauces (4)    HERO / NEAR      KEEP              detalle por distancia ya
+                                                              resuelto en Fase 2.5.
+Butiás (4)                 MIDGROUND_NEAR   KEEP              frondas instanciadas,
+                                                              silueta ya reconocible.
+Rocas                      —                N/A               no existen en la escena.
+
+------------------------------------------------------------------------------
+4. TRIÁNGULOS POR EJEMPLAR (antes → después)
+------------------------------------------------------------------------------
+Árbol del monte, copa     320 (igual para todos) →
+                            MIDGROUND_NEAR 720–1.080 · MIDGROUND_FAR 320–480
+                          + hojas 176 (NEAR) / 132 (FAR, raleo 75 %)
+                          + ramas 3 × 12 (solo NEAR)
+Arbusto no-hero           320 (igual para todos) →
+                            FOREGROUND 1.280 · NEAR 540–900 · FAR/BG 240–400
+Horizonte                 20 (+ 20 del tronco) →
+                            80–100 (lóbulos de detalle 0, lisos); solo los
+                            emergentes de la banda 26–42 m, que recortan
+                            contra el cielo, 320
+Fondo 18–25 m (nuevo)     320–400 las masas que aún son plano medio
+                          (>3,5° en pantalla); 80–100 las demás
+                          (+ tronco de 20 en los árboles chicos)
+Penacho de cortadera      180 (igual; solo cambia el sombreado)
+
+Frente a los rangos orientativos del brief (MIDGROUND_NEAR 15k–40k,
+MIDGROUND_FAR 5k–15k, BACKGROUND 1k–5k, HORIZON 300–2k) estos números
+quedan MUY por debajo, a propósito: los árboles del monte miden 2–3 m y a
+8–17 m ocupan 70–400 px. Subir a 15k triángulos no cambiaría la silueta
+que se ve y multiplicaría por 20 el costo. El brief lo permite ("no imponer
+estos números si no aportan mejora"). El horizonte (80–100 tris) queda
+por debajo del mínimo orientativo de 300: a 26–88 m un árbol ocupa 20–90 px
+y la silueta de 4–5 lóbulos alcanza. Una primera versión usó detalle 1 en
+la banda cercana y en todo el fondo (320–400 tris): sumaba ~+60k triángulos
+por frame sin diferencia visible, y se descartó (ver informe, punto 7).

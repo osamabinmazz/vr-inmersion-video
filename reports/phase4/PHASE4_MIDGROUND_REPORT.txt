@@ -1,0 +1,303 @@
+ZAPICÁN — EL TERRITORIO DESPIERTA
+FASE 4 — EXTENSIÓN CONTROLADA AL PLANO MEDIO · INFORME
+==============================================================================
+Versión de trabajo : snapshots/ZAPICAN_v061_midground_extension.js
+Backup previo      : snapshots/ZAPICAN_v060_before_midground_extension.js (= v051)
+Auditoría          : reports/phase4/MIDGROUND_AUDIT.txt
+Rendimiento        : performance/phase4/PERFORMANCE_BEFORE_AFTER.txt (+ JSON crudos)
+Comparaciones      : comparisons/phase4/ (BEFORE_/AFTER_/COMPARE_<cámara>.jpg)
+
+No se tocó: iluminación global, cielo, atmósfera, personajes, fauna, niebla,
+partículas ni postprocesado. No se rehizo nada de las Fases 1–3: los HERO
+(sauces, ceibo, 3 arbustos, 2 cortaderas, juncal y borde de agua) quedan
+exactamente como estaban.
+
+------------------------------------------------------------------------------
+1. RESUMEN
+------------------------------------------------------------------------------
+El plano medio y el fondo dejaron de ser "copias de una misma forma":
+  - horizonte: 440 poliedros idénticos de 20 caras → 4 siluetas de lóbulos
+    lisos con tono propio, emergentes aislados y grupos bajos;
+  - fondo 18–25 m: se llenó el anillo de tierra vacía que cortaba el paisaje
+    (98 masas bajas y árboles chicos, en manchas con claros);
+  - monte (62 árboles): 5 formas de copa (hoy: paraguas 17, abierto 12, viejo 12, joven 12, dos_pisos 9),
+    resolución según tamaño en pantalla, ramas visibles en los cercanos;
+  - matorral (107 no-hero): 3 masas de lóbulos por especie en vez de una bola;
+  - cortaderas, pasto y ombú: ver punto 2.
+
+Costo: draw calls −7 a −13 % (pase principal; −12 a −19 % contando sombras),
+CPU de update −33 a −73 %,
+memoria estimada 548.6 → 473 MB. Los triángulos del pase principal suben
+(+73k en QC_GROUND): es el fondo nuevo que antes no existía. Detalle en §6.
+
+La distribución aprobada NO se movió: posiciones de monte, ombú, ceibo,
+sauce y butiá, troncos, juncos, gramíneas de humedal, cobertura, flores,
+tallos y penachos de cortadera, y los datos de construcción de toda la
+fauna (que dependen del rng global consumido por el horizonte) son
+idénticos a v060 (verificado comparando ambas versiones cargadas).
+
+------------------------------------------------------------------------------
+2. ASSETS MEJORADOS
+------------------------------------------------------------------------------
+Horizonte (26–88 m, 440)  LOD_REPLACE + VARIANT
+  4 siluetas (redonda, paraguas, emergente, mata baja) elegidas por la
+  máscara de monte (corazón de mancha → redondas; borde → paraguas y matas),
+  sin repetir la del vecino a menos de 5 m. Alturas: emergentes ×1,35–1,65,
+  grupos bajos ×0,5–0,7, el resto ×0,85–1,15 → la línea de copas es
+  irregular. Tono por árbol dentro de la paleta de su banda (la perspectiva
+  atmosférica aprobada se conserva). Lóbulos lisos con normales curvadas
+  hacia afuera de la copa: se lee masa, no racimo de esferas.
+
+Fondo 18–25 m (nuevo, 98)  BACKGROUND_ONLY
+  Masas bajas de matorral (70 %) y árboles chicos (30 %) en manchas de la
+  máscara de monte, con claros. Tono intermedio entre el monte y el
+  horizonte, para que la profundidad se lea en orden.
+
+Árboles del monte (62)  VARIANT + UPGRADE
+  5 layouts de lóbulos (paraguas, dos pisos, joven, abierto, viejo) según
+  ambiente (expuesto vs. dentro de la mancha), sin repetir forma entre
+  vecinos a menos de 2,6 m. AO horneado por vértice (base y centro más
+  oscuros), moteado de valor, normales de follaje. Ramas principales (3 por
+  árbol) en los de plano medio cercano, fundidas en un lote estático.
+  Hojas de copa apoyadas sobre SU copa (antes, sobre un elipsoide genérico).
+
+Arbustos no-hero (107)  VARIANT + UPGRADE
+  3 masas de lóbulos por especie, base a ras del suelo, inclinación leve en
+  vez de rotación libre, sin repetir forma entre vecinos a menos de 1,3 m.
+  Mismo tono por ejemplar que en v060 (mismo generador), AO y moteado.
+  Hojas recortadas reubicadas sobre la masa. UV en espacio de mundo.
+
+Cortaderas no-hero (24)  UPGRADE
+  Penacho con la MISMA forma que antes pero liso (vértices soldados) y con
+  matiz por mata: blanco plateado, crema o rosado apenas perceptible.
+
+Pasto (2.600)  VARIANT
+  Manchas de tono (pajizo donde seca, verde donde junta agua) con ruido
+  propio de baja frecuencia: a media distancia se leen parches, no alfombra.
+
+Ombú (3, plano medio)  UPGRADE
+  Copa lisa (misma forma) y toda la especie en 2 lotes estáticos.
+
+Llanura lejana  BACKGROUND_ONLY
+  Textura 4K duplicada → la misma foto a 1K (no cambia a esa distancia).
+
+------------------------------------------------------------------------------
+3. ASSETS SIMPLIFICADOS
+------------------------------------------------------------------------------
+  - Hojas de copa del monte: 5.456 → 4290 (raleo 25 % en MIDGROUND_FAR,
+    sin mover las que quedan).
+  - Pasto: 2.600 → 2063 mechones dibujados (raleo de hasta 38 % entre 8 y
+    14 m; los restantes se ensanchan hasta ×1,8 para conservar la masa).
+  - Cortaderas en MIDGROUND_FAR: 16 → 10 hojas por mata, ×1,35 de ancho.
+    Se conservan penacho, altura, movimiento y silueta.
+  - Horizonte: lóbulos de detalle 0 (80–100 tris por árbol); solo los
+    emergentes de la banda cercana usan detalle 1.
+  - Copas y arbustos de plano medio lejano: lóbulos de 80 caras (detalle 1).
+
+------------------------------------------------------------------------------
+4. LODs UTILIZADOS
+------------------------------------------------------------------------------
+Nivel   Zona                         Monte (copa)          Arbusto      Horizonte/fondo
+LOD0    HERO                         (Fase 2, sin cambio)  (Fase 2)     —
+LOD1    FOREGROUND / MIDGROUND_NEAR  lóbulos 180–320 c.    320 / 180    fondo: 80 c./lóbulo
+        (>8°)                        720–1.080 tris        540–1.280
+LOD2    MIDGROUND_FAR (3,5–8°)       lóbulos 80 c.         80 c.        fondo: 80 c./lóbulo
+                                     320–480 tris          240–400
+LOD3    BACKGROUND (<3,5°)           4 lóbulos de 80 c.    80 c.        —
+        HORIZON (>24 m)              —                     —            lóbulos de 20 c.,
+                                                                        80–100 tris
+Hoy ningún árbol del monte cae en LOD3 (el más lejano ocupa >3,5°).
+
+Selección por TAMAÑO EN PANTALLA (ángulo × relevancia), no por metros.
+Cambio de nivel: no hay. La cámara no se desplaza, así que el nivel se
+decide una vez al construir; por eso no hay popping y no hace falta
+dithered/cross-fade. Todos los niveles de un mismo lóbulo comparten
+silueta (ruido suave evaluado sobre la esfera unitaria, no por vértice).
+LÍMITE: si se agrega locomoción (está en el TODO del README), esta
+decisión deja de valer; habría que pasar a THREE.LOD por grupo o re-hornear
+por celdas al moverse. No está implementado porque hoy no hace falta.
+
+------------------------------------------------------------------------------
+5. INSTANCING, BATCHING, CULLING, SOMBRAS, VIENTO, TEXTURAS
+------------------------------------------------------------------------------
+Batching / instancing
+  - Copas del monte: 1 InstancedMesh → 2 mallas horneadas (con / sin sombra),
+    con formas distintas por árbol (InstancedMesh obliga a una sola forma).
+  - Arbustos no-hero: 5 InstancedMesh → 2 mallas horneadas (mate / brillante).
+  - Horizonte + fondo: 6 InstancedMesh → 1 malla horneada + 1 InstancedMesh
+    de troncos.
+  - Ombú: 24 mallas sueltas con sombra → 2 lotes estáticos.
+  - Ramas del monte: lote estático (flushStaticBatches).
+  Las geometrías base se reutilizan (caché por especie × variante × nivel).
+Culling
+  - Frustum: el de three por objeto. Las mallas horneadas cubren 360°, así
+    que en la práctica se dibujan siempre (igual que las InstancedMesh de
+    antes, que también se evaluaban como un solo objeto).
+  - Distancia: por raleo y por nivel de detalle (pasto, hojas, cortaderas).
+  - Oclusión: no disponible en three/WebGL sin un sistema propio; no se
+    implementó.
+Sombras (progresivas)
+  - HERO y primer plano: sin cambio.
+  - Monte: proyectan sombra solo las 6 copas que caen DENTRO del mapa de
+    sombra del sol (calculado con su propia matriz); las otras 56 se
+    dibujaban antes en el pase de sombra sin poder dejar sombra en ningún lado.
+  - Horizonte y fondo: sin sombra (como antes). No flotan: la base de cada
+    masa está a ras del suelo y el AO horneado oscurece el pie.
+Viento
+  - Pasto, copas del monte, hojas de copa y cuerpos de arbusto pasan del CPU
+    al vertex shader (misma fórmula de dos senos). Se dejan de recomponer y
+    subir ~8.200 matrices por frame.
+  - Amplitud por zona: FOREGROUND 1 · NEAR 0,85 · FAR 0,6 · BACKGROUND 0,35 ·
+    HORIZON 0,15; en instancias, además, cae con la distancia al visor.
+  - Fase por ejemplar (atributo o hash de posición): nada se mueve en bloque.
+Estabilidad al girar la cabeza
+  - Se midió el primer render de cada dirección (360°, cada 15°): three
+    compilaba shaders la primera vez que un material entraba en cuadro
+    (tirones de 30–80 ms a 15° y 195°, ya presentes en v060). Ahora se
+    compila todo al inicio y otra vez al cargar el HDRI (que cambia la
+    variante de los materiales PBR, p. ej. el agua): ya no aparece ningún
+    shader nuevo al girar.
+  - Queda un frame de ~37 ms la primera vez que se mira hacia 195° que NO
+    es compilación (el número de programas no cambia); en SwiftShader no se
+    puede aislar. Verificar en el visor con ?perf=1 (contador "stutters").
+  - La sombra se mueve con la planta (material de profundidad con el mismo
+    viento).
+Texturas / atlas
+  - Presupuesto: el único exceso real era la llanura lejana (4K duplicada) →
+    1K. Las 4K restantes son el suelo hero de 30×30 m (Fase 1–3, no se toca).
+  - Atlas: se estudió. Las hojas ya comparten 2 fotos (cada una con 2 hojas
+    que se eligen por offset) y el follaje de arbusto usa UN mapa compartido;
+    las masas nuevas no tienen textura propia (color por vértice). Unir hojas
+    (alphaTest, doble cara) con masas opacas en un atlas mezclaría materiales
+    incompatibles: no se hizo.
+
+------------------------------------------------------------------------------
+6. MÉTRICAS (medidas; tablas completas en PERFORMANCE_BEFORE_AFTER.txt)
+------------------------------------------------------------------------------
+Draw calls           pase principal             frame completo (con sombra)
+  QC_GROUND        174 → 155  ( -11%)       281 → 233  ( -17%)
+  QC_MID           277 → 258  (  -7%)       384 → 336  ( -12%)
+  QC_HIGH          447 → 408  (  -9%)       554 → 486  ( -12%)
+  QC_WATER         150 → 130  ( -13%)       257 → 208  ( -19%)
+  QC_WORST_CASE    264 → 245  (  -7%)       371 → 323  ( -13%)
+
+Triángulos visibles  pase principal                 frame completo (con sombra)
+  QC_GROUND        281,572 → 354,578  ( +26%)    454,464 → 511,722  ( +13%)
+  QC_MID           301,171 → 374,177  ( +24%)    474,063 → 531,321  ( +12%)
+  QC_HIGH          311,579 → 381,129  ( +22%)    484,471 → 538,273  ( +11%)
+  QC_WATER         278,145 → 347,991  ( +25%)    451,037 → 505,135  ( +12%)
+  QC_WORST_CASE    300,639 → 373,645  ( +24%)    473,531 → 530,789  ( +12%)
+
+Triángulos visibles PROMEDIO (barrido 360° desde el punto de vista real):
+  pase principal  273,926 → 345,025 (+26%)
+  con sombra      446,818 → 502,169 (+12%)
+Triángulos visibles PEOR CASO:
+  QC_WORST_CASE   300,639 → 373,645 (con sombra 473,531 → 530,789)
+  peor dirección del barrido  284,508 → 357,514
+Draw calls al girar la cabeza (barrido): 75–273 → 51–267
+
+Por qué suben los triángulos: el fondo 18–25 m es geometría NUEVA (antes
+ahí no había nada) y el horizonte pasó de 20 a 80–100 triángulos por árbol.
+Una primera versión usaba detalle 1 en la banda cercana y en todo el fondo
+y sumaba ~+45k triángulos más sin diferencia visible: se descartó. El total
+queda muy por debajo del presupuesto habitual de Quest 2/3 (Meta sugiere
+~750k–1M triángulos por frame), mientras que lo que suele limitar en VR con
+three.js —draw calls y CPU por frame— bajó.
+
+CPU por frame (mediana, JS en este contenedor; sirve como relación, no como
+valor absoluto del Quest)
+  QC_GROUND       update   4.1 → 2.75  ms   envío   2.9 → 2.55  ms
+  QC_MID          update   3.7 → 2.1   ms   envío   3.7 → 3.5   ms
+  QC_HIGH         update  7.85 → 2.1   ms   envío  3.85 → 4     ms
+  QC_WATER        update  3.85 → 2     ms   envío  2.55 → 2.55  ms
+  QC_WORST_CASE   update   3.7 → 2.1   ms   envío  3.35 → 3.25  ms
+  En el barrido 360° dos direcciones del AFTER dieron envíos de 4,3 s y 8 s:
+  son esperas del raster por software (no se reproducen al repetir la
+  medición dirección por dirección: 1,5–7 ms). Por eso se usan medianas.
+
+FPS / tiempo de GPU: NO MEDIBLES en este entorno (render por software,
+SwiftShader: un frame tarda segundos). No se inventan cifras. Para medirlos
+en el visor: abrir la escena con ?perf=1; cada 10 s se registra en consola
+(chrome://inspect) y en window.__perfLog: FPS, frame time medio, p95, p99,
+máximo, frames que exceden 1,5× el presupuesto (stutter), draw calls y
+triángulos. Conviene medir mirando al frente, a QC_WORST_CASE (laguna +
+monte) y girando la cabeza despacio 360°.
+
+Overdraw geométrico (capas de superficie por píxel, cota superior)
+  QC_GROUND        21.89 → 24.41 
+  QC_MID           30.97 → 34.59 
+  QC_HIGH          44.38 → 50.61 
+  QC_WATER         25.82 → 30.52 
+  QC_WORST_CASE    27.62 → 30.98 
+  Sube por el fondo nuevo y por masas más grandes que se superponen; es
+  geometría opaca (early-z la descarta en GPU real), no transparencias.
+
+Memoria (estimación)
+  texturas   526.3 → 446.3 MB   (llanura lejana 4K → 1K)
+  geometría  4.7 → 9.2 MB   (mallas horneadas con color/pivote/viento por vértice)
+  instancias 1.5 → 1.5 MB
+  TOTAL      548.6 → 473 MB   (incluye shadow map 2048², sin HDRI/PMREM)
+
+Errores de consola: 0 antes, 0 después. (Los 96 avisos "Texture marked for
+update but no image data found" ya existían en v060: texturas marcadas
+antes de que carguen sus imágenes; no los introduce esta fase.)
+
+------------------------------------------------------------------------------
+7. COMPOSICIÓN Y PROFUNDIDAD
+------------------------------------------------------------------------------
+  - Profundidad por capas de valor: monte (oscuro, con hojas) → fondo 18–25 m
+    (intermedio) → horizonte (más claro y frío, paleta aprobada). Sin niebla.
+  - Línea de copas irregular: emergentes, grupos bajos, masas y claros.
+  - Personajes (marcadores), agua y puntos de interés: siguen visibles en
+    QC_GROUND, QC_MID y QC_WATER; el fondo nuevo está a 18 m o más, detrás de
+    todo lo narrativo, y respeta los claros de la máscara.
+  - Sin alineaciones: todo lo nuevo sale de máscaras de ruido, nunca de una
+    grilla ni de un anillo parejo.
+
+------------------------------------------------------------------------------
+8. CRITERIOS DE ACEPTACIÓN
+------------------------------------------------------------------------------
+1. El plano medio acompaña al primer plano ......... SÍ, en forma y variedad
+   (ver COMPARE_QC_GROUND / QC_MID). Ver punto 5 de pendientes.
+2. Desaparecen repeticiones evidentes ............... SÍ: horizonte, copas del
+   monte, arbustos, penachos.
+3. Horizonte más natural ............................ SÍ, con reservas: es
+   irregular y continuo, pero sigue siendo geometría lisa, sin recorte fino.
+4. Transición de calidad gradual .................... SÍ en plano medio →
+   fondo → horizonte.
+5. Sin salto visible HERO → LOW POLY ................ PARCIAL. El salto ahora
+   es al revés: los HERO aprobados (ceibo, sauces, arbustos y penachos hero)
+   siguen facetados y el plano medio es liso. No se tocó porque las Fases
+   1–3 están aprobadas; se propone como primer punto de la Fase 5.
+6. Draw calls controlados ........................... SÍ, bajan en todas las
+   cámaras y en todo el barrido.
+7. Rendimiento VR dentro del presupuesto ............ PROBABLE, sin confirmar:
+   draw calls y CPU bajan, triángulos suben dentro de un margen holgado;
+   FPS y frame time reales hay que medirlos en el visor con ?perf=1.
+
+------------------------------------------------------------------------------
+9. PROBLEMAS PENDIENTES — LOS 5 MÁS EVIDENTES
+------------------------------------------------------------------------------
+1. HERO facetado junto a plano medio liso. Los HERO de Fase 2 usan
+   icosaedros sin soldar y flatShading: ahora son lo más "low poly" del
+   cuadro (se ve en QC_WORST_CASE y QC_MID: ceibo, sauces, arbusto hero,
+   penachos hero). Solución barata y sin cambiar formas: soldar vértices.
+2. Pasto de primer plano en púas. Conos de 3 caras, rígidos y amarillos:
+   dominan la mitad inferior de QC_GROUND. No es plano medio, pero es lo que
+   más se ve.
+3. Suelo del claro central y borde a 15 m. El claro se lee como tierra
+   pelada con púas sueltas, y desde QC_HIGH/QC_MID se ve el cambio de tono
+   donde termina el suelo detallado de 30×30 m y empieza la llanura.
+4. Horizonte todavía "algodonoso". Lóbulos lisos sin recorte de hojas: de
+   cerca del límite (26–30 m) algunas masas se leen como nubes verdes. El
+   siguiente paso sería un impostor/billboard con recorte de follaje, que
+   no se hizo en esta fase para no abrir un sistema nuevo de texturas.
+5. Hojas de copa como "papelitos". Las tarjetas planas de monte, ombú y
+   ceibo se ven como papeles pegados a 3–8 m (pendiente desde Fase 3), y la
+   hojarasca de Fase 3 sigue verde oliva en vez de parda seca.
+
+------------------------------------------------------------------------------
+10. NO SE HIZO (por pedido)
+------------------------------------------------------------------------------
+Fauna, personajes, iluminación global, cielo, niebla, partículas,
+postprocesado. No se inició la Fase 5.

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
-import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 // --- Renderer -------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -56,10 +56,6 @@ new RGBELoader().load("/assets/hdri/belfast_sunset_puresky_4k.hdr", (hdrTexture)
   scene.environmentRotation = new THREE.Euler(0, SUN_AZIMUTH, 0);
   hdrTexture.dispose();
   pmrem.dispose();
-  // FASE 4: con el entorno cambia la variante de shader de los materiales
-  // PBR; se recompilan acá para que no lo hagan la primera vez que entran en
-  // cuadro (medido: el agua tironeaba 35–80 ms al girar la cabeza).
-  renderer.compile(scene, camera);
 });
 
 // La luz direccional tiene que coincidir con el sol del HDRI (SUN_AZIMUTH),
@@ -212,27 +208,7 @@ scene.add(ground);
 // hasta el horizonte. Va sin displacement ni normal map (a esa distancia no
 // aportan nada y costarían caro) y apenas por debajo, para no pelearse en
 // z-buffer con el suelo detallado.
-// FASE 4 (presupuesto de texturas): este plano cargaba OTRA copia del
-// difuso 4K — una segunda textura de 4096² en la GPU (~85 MB con mipmaps)
-// para un suelo que se ve a más de 15 m, con 60 repeticiones. Ahora usa la
-// misma foto reducida a 1024² en un canvas: a esa distancia cada texel sigue
-// siendo más chico que un píxel del visor.
-const farGroundDiff = (() => {
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 1024;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#8c8260"; // tono medio de la pradera mientras carga
-  ctx.fillRect(0, 0, 1024, 1024);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = maxAnisotropy;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  new THREE.ImageLoader().load("/assets/textures/grass_ground/diff_4k.jpg", (img) => {
-    ctx.drawImage(img, 0, 0, 1024, 1024);
-    tex.needsUpdate = true;
-  });
-  return tex;
-})();
+const farGroundDiff = loadTiled("/assets/textures/grass_ground/diff_4k.jpg", THREE.SRGBColorSpace);
 farGroundDiff.repeat.set(60, 60);
 const farGround = new THREE.Mesh(
   new THREE.PlaneGeometry(400, 400),
@@ -1130,308 +1106,6 @@ function heroDist(x, z) {
 const HERO_GROUP = new THREE.Group();
 scene.add(HERO_GROUP);
 
-// ===========================================================================
-// FASE 4 — extensión controlada al plano medio
-// ===========================================================================
-// Zonificación visual. No alcanza con la distancia en metros: un árbol de
-// 3 m a 12 m ocupa en pantalla lo mismo que un arbusto de 0,6 m a 2,4 m. Se
-// mide el TAMAÑO APARENTE (el ángulo vertical que ocupa el objeto desde el
-// punto de vista fijo) y se lo pondera por relevancia compositiva: lo que
-// cae en el cono frontal —el visor arranca mirando hacia -Z, hacia el monte y
-// los personajes— pesa más que lo que queda a la espalda. Es LOD por tamaño
-// en pantalla decidido una sola vez, porque la cámara no se desplaza: no hay
-// transiciones en vivo y por lo tanto no hay popping que disimular.
-const TIER_RANK = { HERO: 0, FOREGROUND: 1, MIDGROUND_NEAR: 2, MIDGROUND_FAR: 3, BACKGROUND: 4, HORIZON: 5 };
-const tierRegistry = {}; // asset -> { zona -> cantidad }, para el informe
-function registerTier(asset, tier) {
-  const r = (tierRegistry[asset] ??= {});
-  r[tier] = (r[tier] || 0) + 1;
-}
-function visualTier(x, z, height, asset) {
-  const d = Math.max(0.5, heroDist(x, z));
-  const angular = THREE.MathUtils.radToDeg(2 * Math.atan(height / 2 / d));
-  const facing = -(z - HERO_VIEW_POS.z) / d; // 1 = justo enfrente, -1 = detrás
-  const relevance = 0.8 + 0.2 * clamp01((facing + 0.2) / 0.9);
-  const score = angular * relevance;
-  // Umbrales en grados pensados en píxeles del visor (~20 px por grado en
-  // Quest 2/3): más de 20° (>400 px) es primer plano; 8–20° (160–400 px)
-  // plano medio cercano; 3,5–8° (70–160 px) plano medio lejano; por debajo,
-  // fondo. Un árbol de 2,4 m a 12 m ocupa ~11°: sigue siendo plano medio.
-  let tier;
-  if (d > 24) tier = "HORIZON";
-  else if (score > 20) tier = "FOREGROUND";
-  else if (score > 8) tier = "MIDGROUND_NEAR";
-  else if (score > 3.5) tier = "MIDGROUND_FAR";
-  else tier = "BACKGROUND";
-  if (asset) registerTier(asset, tier);
-  return tier;
-}
-// El viento baja con la zona: el primer plano se mueve entero, el fondo
-// apenas respira. Un fondo quieto se lee muerto; uno que se mueve igual que
-// el primer plano aplana la profundidad.
-const TIER_WIND = { HERO: 1, FOREGROUND: 1, MIDGROUND_NEAR: 0.85, MIDGROUND_FAR: 0.6, BACKGROUND: 0.35, HORIZON: 0.15 };
-
-// --- Viento por shader -----------------------------------------------------
-// Hasta la Fase 3 el viento se hacía en CPU: cada frame se recomponía la
-// matriz de ~8.600 instancias (pasto, copas, hojas de copa) y se subían a la
-// GPU. Para el plano medio eso se pasa al vertex shader: el balanceo es el
-// mismo (misma fórmula de dos senos), pero no cuesta CPU ni ancho de banda.
-// La fase sale de un atributo o de la posición de la instancia, así que dos
-// plantas vecinas nunca se mueven sincronizadas.
-const windUniforms = {
-  uWindTime: { value: 0 },
-  uViewPos: { value: new THREE.Vector3(HERO_VIEW_POS.x, HERO_VIEW_POS.y, HERO_VIEW_POS.z) },
-};
-const WIND_GLSL = /* glsl */ `
-uniform float uWindTime;
-uniform vec3 uViewPos;
-mat3 windRot(float ax, float az) {
-  float cx = cos(ax), sx = sin(ax), cz = cos(az), sz = sin(az);
-  return mat3(1.0, 0.0, 0.0, 0.0, cx, sx, 0.0, -sx, cx) * mat3(cz, sz, 0.0, -sz, cz, 0.0, 0.0, 0.0, 1.0);
-}
-`;
-function windRotGLSL(mode, w) {
-  const f = (v) => v.toFixed(4);
-  const angle = (ph) =>
-    `(sin(uWindTime * ${f(w.f1)} + ${ph}) * ${f(w.a1)} + sin(uWindTime * ${f(w.f2)} + ${ph} * 1.4) * ${f(w.a2)})`;
-  if (mode === "pivot") {
-    // Malla horneada: cada vértice sabe el pivote y la fase de SU ejemplar.
-    return `float wA = aWind.y * ${angle("aWind.x")}; mat3 wR = windRot(wA, wA * ${f(w.zRatio)});`;
-  }
-  // Instancias: fase por hash de la posición y amplitud que cae con la
-  // distancia al punto de vista.
-  return `
-#ifdef USE_INSTANCING
-    vec3 wIP = vec3(instanceMatrix[3]);
-#else
-    vec3 wIP = vec3(0.0);
-#endif
-    float wPh = fract(sin(dot(wIP.xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
-    float wFade = mix(1.0, ${f(w.farAmp)}, smoothstep(${f(w.near)}, ${f(w.far)}, distance(wIP.xz, uViewPos.xz)));
-    float wA = wFade * ${angle("wPh")}; mat3 wR = windRot(wA, wA * ${f(w.zRatio)});`;
-}
-function windify(material, mode, w) {
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uWindTime = windUniforms.uWindTime;
-    shader.uniforms.uViewPos = windUniforms.uViewPos;
-    const rot = windRotGLSL(mode, w);
-    const header = WIND_GLSL + (mode === "pivot" ? "attribute vec3 aPivot;\nattribute vec2 aWind;\n" : "");
-    const move = mode === "pivot" ? "transformed = aPivot + wR * (transformed - aPivot);" : "transformed = wR * transformed;";
-    shader.vertexShader =
-      header +
-      shader.vertexShader
-        .replace("#include <beginnormal_vertex>", `#include <beginnormal_vertex>\n  { ${rot}\n    objectNormal = wR * objectNormal; }`)
-        .replace("#include <begin_vertex>", `#include <begin_vertex>\n  { ${rot}\n    ${move} }`);
-  };
-  const key = `wind:${mode}:${JSON.stringify(w)}`;
-  material.customProgramCacheKey = () => key;
-  return material;
-}
-// La sombra tiene que moverse con la planta: el material de profundidad por
-// defecto no conoce el viento del shader y dejaría la sombra quieta.
-function windDepthMaterial(mode, w, src) {
-  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  if (src?.alphaMap) {
-    m.alphaMap = src.alphaMap;
-    m.alphaTest = src.alphaTest;
-    m.side = THREE.DoubleSide;
-  }
-  return windify(m, mode, w);
-}
-
-// --- Masas de follaje por lóbulos -----------------------------------------
-// Ruido suave (suma de senos). A diferencia del hash por vértice que usa
-// makeOrganicGeometry, da la MISMA forma a cualquier resolución: los niveles
-// de detalle de un lóbulo comparten silueta y solo cambia cuán fina es.
-function smoothNoise3(x, y, z, s) {
-  return (
-    0.55 * Math.sin(1.7 * x + s * 1.3) * Math.sin(1.9 * y + s * 0.7) * Math.sin(1.3 * z + s * 2.1) +
-    0.3 * Math.sin(3.3 * x - s) * Math.sin(2.9 * z + s * 1.7) +
-    0.15 * Math.sin(5.1 * y + 3.7 * x + s * 0.3)
-  );
-}
-// Octava fina: los grumos de las ramitas que forman la superficie de una
-// masa de follaje. Sin ella el lóbulo liso se lee como una burbuja de goma.
-function fineNoise3(x, y, z, s) {
-  return (
-    Math.sin(6.3 * x + s * 2.3) * Math.sin(5.7 * y - s) * Math.sin(6.9 * z + s * 0.9) * 0.6 +
-    Math.sin(9.7 * x + 8.3 * z + s * 1.9) * Math.sin(8.9 * y + s * 3.1) * 0.4
-  );
-}
-
-// Lóbulo liso: icosaedro con los vértices SOLDADOS antes de calcular
-// normales. El icosaedro de three viene sin indexar, y por eso todo el
-// follaje de la escena se veía facetado: cada cara tenía su propia normal.
-function makeLobe(r, detail, seed, amount, flatten, fine = 0.1) {
-  let g = new THREE.IcosahedronGeometry(1, detail);
-  g.deleteAttribute("normal");
-  g.deleteAttribute("uv");
-  g = mergeVertices(g);
-  const pos = g.attributes.position;
-  const v = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    v.multiplyScalar(1 + smoothNoise3(v.x * 1.6, v.y * 1.6, v.z * 1.6, seed) * amount + fineNoise3(v.x, v.y, v.z, seed) * fine);
-    // Base achatada: una masa de follaje real cuelga y se aplana abajo.
-    if (v.y < -flatten) v.y = -flatten + (v.y + flatten) * 0.35;
-    pos.setXYZ(i, v.x * r, v.y * r, v.z * r);
-  }
-  return g;
-}
-
-// Une los lóbulos de un layout [[x, y, z, r], ...] en una sola geometría y
-// hornea `aAO`: más oscuro abajo y hacia el interior de la masa, que es la
-// sombra propia que una copa real tiene y que sin textura horneada falta.
-function buildLobeMass(layout, detail, seed, { amount = 0.22, flatten = 0.55, aoMin = 0.66, fine = 0.1, bend = 0.62, dapple = 0.3 } = {}) {
-  let yMin = Infinity;
-  let yMax = -Infinity;
-  for (const [, y, , r] of layout) {
-    yMin = Math.min(yMin, y - r);
-    yMax = Math.max(yMax, y + r);
-  }
-  const lr = mulberry32(seed * 7 + 11);
-  const parts = layout.map(([lx, ly, lz, r], li) => {
-    // Sin detalle suficiente la octava fina solo agrega ruido de vértice.
-    const g = makeLobe(r, detail, seed + li * 17.3, amount, flatten, detail >= 2 ? fine : fine * 0.4);
-    const pos = g.attributes.position;
-    const ao = new Float32Array(pos.count);
-    const lobeTint = 0.93 + lr() * 0.14; // cada lóbulo, un matiz apenas distinto
-    for (let i = 0; i < pos.count; i++) {
-      const ny = pos.getY(i) / r;
-      const gy = (ly + pos.getY(i) - yMin) / (yMax - yMin);
-      ao[i] = (aoMin + (1 - aoMin) * clamp01(0.55 * (ny * 0.5 + 0.5) + 0.45 * gy)) * lobeTint;
-    }
-    g.translate(lx, ly, lz);
-    g.setAttribute("aAO", new THREE.BufferAttribute(ao, 1));
-    return g;
-  });
-  const merged = mergeGeometries(parts);
-  merged.computeVertexNormals();
-  // Normales curvadas hacia afuera de la MASA entera (técnica estándar de
-  // follaje): con la normal de cada lóbulo, cada uno se sombrea como una
-  // esfera propia y la copa se lee como un racimo de burbujas. Mezcladas con
-  // la dirección desde el centro de la copa, la luz recorre la masa completa
-  // y los lóbulos quedan solo en la silueta, que es donde tienen que estar.
-  // Moteado: variación de valor por vértice, el "grano" de las ramitas.
-  const cy = (yMin + yMax) / 2;
-  const pos = merged.attributes.position;
-  const nrm = merged.attributes.normal;
-  const aoAttr = merged.attributes.aAO;
-  const n = new THREE.Vector3();
-  const dir = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    const px = pos.getX(i);
-    const py = pos.getY(i);
-    const pz = pos.getZ(i);
-    dir.set(px, (py - cy) * 1.3, pz).normalize();
-    n.fromBufferAttribute(nrm, i).lerp(dir, bend).normalize();
-    nrm.setXYZ(i, n.x, n.y, n.z);
-    aoAttr.setX(i, aoAttr.getX(i) * (1 - dapple / 2 + dapple * hashNoise3(px * 7.1 + seed, py * 7.1, pz * 7.1)));
-  }
-  return merged;
-}
-
-// Punto de la superficie de la masa en la dirección (nx, ny, nz) desde su
-// centro: sirve para apoyar las hojas recortadas SOBRE los lóbulos y no
-// sobre el elipsoide viejo, que ahora dejaría hojas flotando en los huecos.
-function lobeSurface(layout, nx, ny, nz, out) {
-  let best = -1;
-  for (const [cx, cy, cz, r] of layout) {
-    const b = nx * cx + ny * cy + nz * cz;
-    const disc = b * b - (cx * cx + cy * cy + cz * cz - r * r);
-    if (disc < 0) continue;
-    best = Math.max(best, b + Math.sqrt(disc));
-  }
-  if (best > 0) return out.set(nx * best, ny * best, nz * best);
-  // Dirección que cae en un hueco: se apoya en el lóbulo más alineado.
-  let L = layout[0];
-  let bd = -Infinity;
-  for (const l of layout) {
-    const len = Math.hypot(l[0], l[1], l[2]) || 1;
-    const d = (nx * l[0] + ny * l[1] + nz * l[2]) / len;
-    if (d > bd) {
-      bd = d;
-      L = l;
-    }
-  }
-  return out.set(L[0] + nx * L[3], L[1] + ny * L[3], L[2] + nz * L[3]);
-}
-
-// Horneado de ejemplares en UNA malla: cada copia va a coordenadas de mundo
-// con su color (tono del ejemplar × AO), su pivote y su fase de viento como
-// atributos. Un draw call para decenas de ejemplares de formas distintas,
-// que con InstancedMesh exigiría una malla por variante.
-function bakeInstances(items) {
-  if (!items.length) return new THREE.BufferGeometry(); // zona vacía: malla sin nada que dibujar
-  const parts = items.map((it) => {
-    const g = it.geo.clone().applyMatrix4(it.matrix);
-    const n = g.attributes.position.count;
-    const col = new Float32Array(n * 3);
-    const piv = new Float32Array(n * 3);
-    const wind = new Float32Array(n * 2);
-    const ao = g.attributes.aAO;
-    for (let i = 0; i < n; i++) {
-      const a = ao ? ao.getX(i) : 1;
-      col[i * 3] = it.color.r * a;
-      col[i * 3 + 1] = it.color.g * a;
-      col[i * 3 + 2] = it.color.b * a;
-      piv[i * 3] = it.pivot[0];
-      piv[i * 3 + 1] = it.pivot[1];
-      piv[i * 3 + 2] = it.pivot[2];
-      wind[i * 2] = it.phase;
-      wind[i * 2 + 1] = it.amp;
-    }
-    if (ao) g.deleteAttribute("aAO");
-    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    g.setAttribute("aPivot", new THREE.BufferAttribute(piv, 3));
-    g.setAttribute("aWind", new THREE.BufferAttribute(wind, 2));
-    if (it.uvScale) {
-      // UV en espacio de mundo: dos arbustos vecinos no repiten el mismo
-      // moteado en el mismo lugar.
-      const p = g.attributes.position;
-      const uv = new Float32Array(n * 2);
-      for (let i = 0; i < n; i++) {
-        const x = p.getX(i);
-        const y = p.getY(i);
-        const z = p.getZ(i);
-        uv[i * 2] = (x + z * 0.5) * it.uvScale;
-        uv[i * 2 + 1] = (y + (x - z) * 0.35) * it.uvScale;
-      }
-      g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-    }
-    return g;
-  });
-  const merged = mergeGeometries(parts);
-  parts.forEach((g) => g.dispose());
-  return merged;
-}
-
-// Engorda los lóbulos de un layout: con radios justos quedaban esferas
-// apenas tocándose (racimo de uvas); solapadas se leen como UNA masa.
-const inflateLobes = (layout, k) => layout.map(([x, y, z, r]) => [x, y, z, r * k]);
-
-// Elección de variante sin repetir la del vecino: dentro de `radius` metros
-// no puede haber dos ejemplares con la misma forma. Rng propio por sistema.
-function makeVariantPicker(count, radius, rand) {
-  const placed = [];
-  return (x, z, weights) => {
-    const banned = new Set();
-    for (const p of placed) if (Math.hypot(p.x - x, p.z - z) < radius) banned.add(p.v);
-    let total = 0;
-    const w = [];
-    for (let v = 0; v < count; v++) {
-      const wv = banned.has(v) && banned.size < count ? 0 : weights ? weights[v] : 1;
-      w.push(wv);
-      total += wv;
-    }
-    let pick = rand() * total;
-    let v = 0;
-    while (v < count - 1 && pick >= w[v]) pick -= w[v++];
-    placed.push({ x, z, v });
-    return v;
-  };
-}
-
 // --- Variación natural de color por individuo ---------------------------
 // Dos plantas de la misma especie nunca tienen exactamente el mismo verde,
 // y esa diferencia es de las señales más fuertes de que algo está vivo y no
@@ -1506,67 +1180,14 @@ const trunkColorRng = mulberry32(730051);
 const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, treePositions.length);
 trunks.castShadow = true;
 
-// FASE 4: la copa ya no es UNA bola repetida 62 veces. Hay cinco formas de
-// copa (layouts de lóbulos) y cada árbol toma una según su ambiente: los
-// expuestos del pastizal se abren en paraguas, los de adentro de la mancha
-// crecen ceñidos y altos compitiendo por luz. La resolución de cada copa sale
-// de su zona visual (tamaño aparente), no de una cifra fija.
-// Unidades: las del icosaedro viejo (radio 0,55), así la escala aprobada de
-// cada árbol (sX, sY, sZ) sigue significando lo mismo.
-const CANOPY_VARIANTS = [
-  // 0 · paraguas: espinillo expuesto, ancho y chato
-  { name: "paraguas", lobes: [[0, 0.06, 0, 0.36], [0.3, 0.0, 0.1, 0.28], [-0.28, -0.02, -0.12, 0.3], [0.08, -0.04, 0.32, 0.26], [-0.1, 0.02, -0.34, 0.27], [0.22, 0.12, -0.22, 0.22]] },
-  // 1 · dos pisos: asimétrico, una masa alta desplazada
-  { name: "dos_pisos", lobes: [[0.05, 0.16, 0.02, 0.34], [-0.26, -0.1, 0.12, 0.3], [0.3, -0.12, -0.05, 0.27], [0.1, -0.14, -0.3, 0.24], [-0.18, 0.26, -0.14, 0.2]] },
-  // 2 · joven ceñido: más alto que ancho, dentro de la mancha
-  { name: "joven", lobes: [[0, 0.18, 0, 0.3], [0.12, -0.1, 0.08, 0.28], [-0.12, -0.08, -0.1, 0.27], [0.02, 0.42, 0.03, 0.2]] },
-  // 3 · abierto: copa rota por un lado, con un hueco que deja ver cielo
-  { name: "abierto", lobes: [[0.18, 0.06, 0.05, 0.33], [0.42, -0.06, -0.15, 0.24], [-0.24, 0.0, 0.3, 0.25], [-0.36, -0.1, -0.18, 0.22], [0.05, 0.22, -0.32, 0.2]] },
-  // 4 · viejo: el más ancho, con los bordes caídos
-  { name: "viejo", lobes: [[0, 0.1, 0, 0.33], [0.38, -0.12, 0.05, 0.26], [-0.36, -0.14, -0.04, 0.27], [0.06, -0.1, 0.4, 0.25], [-0.04, -0.12, -0.4, 0.25], [0.22, 0.14, 0.26, 0.2]] },
-];
-for (const v of CANOPY_VARIANTS) v.lobes = inflateLobes(v.lobes, 1.12);
-// Resolución de cada lóbulo por zona (icosaedro soldado, liso):
-// detalle 3 = 320 caras, 2 = 180, 1 = 80. En BACKGROUND además se descartan
-// los lóbulos más chicos: a esa distancia no cambian la silueta.
-const CANOPY_TIER_DETAIL = { FOREGROUND: 3, MIDGROUND_NEAR: 2, MIDGROUND_FAR: 1, BACKGROUND: 1 };
-const canopyGeoCache = new Map();
-function canopyLobesFor(variant, tier) {
-  const lobes = CANOPY_VARIANTS[variant].lobes;
-  if (tier !== "BACKGROUND" || lobes.length <= 4) return lobes;
-  return [...lobes].sort((a, b) => b[3] - a[3]).slice(0, 4);
-}
-function canopyGeoFor(variant, tier) {
-  const key = `${variant}:${tier}`;
-  if (!canopyGeoCache.has(key)) {
-    canopyGeoCache.set(key, buildLobeMass(canopyLobesFor(variant, tier), CANOPY_TIER_DETAIL[tier], 900 + variant * 31, { amount: 0.24 }));
-  }
-  return canopyGeoCache.get(key);
-}
-const canopyMat = new THREE.MeshStandardMaterial({ roughness: 0.85, vertexColors: true });
-const CANOPY_WIND = { f1: 0.5, a1: 0.035, f2: 1.2, a2: 0.015, zRatio: 0.8 };
-windify(canopyMat, "pivot", CANOPY_WIND);
-// Rng aislado para elegir la forma: no toca treeRng, así que la posición,
-// escala e inclinación aprobadas de cada árbol no se mueven.
-const pickCanopyVariant = makeVariantPicker(CANOPY_VARIANTS.length, 2.6, mulberry32(640021));
-const canopyBake = { shadow: [], noShadow: [] };
-// ¿Cae dentro del mapa de sombra del sol? El sol es fijo, así que se decide
-// una vez con la propia matriz de la sombra. Una copa fuera del mapa no
-// puede dejar sombra en ningún lado: dibujarla en el pase de sombra era
-// costo puro (el InstancedMesh viejo lo hacía con las 62).
-sun.updateMatrixWorld();
-sun.target.updateMatrixWorld();
-sun.shadow.updateMatrices(sun);
-const _shadowV = new THREE.Vector3();
-function inSunShadowMap(x, y, z, pad = 0.06) {
-  _shadowV.set(x, y, z).applyMatrix4(sun.shadow.matrix);
-  return _shadowV.x > -pad && _shadowV.x < 1 + pad && _shadowV.y > -pad && _shadowV.y < 1 + pad;
-}
-// Ramas principales visibles entre lóbulos (solo primer plano y plano medio
-// cercano). Se crean más abajo, cuando ya existe addStaticPart.
-const monteBranchSpecs = [];
-const _trunkEuler = new THREE.Euler();
-const _v3a = new THREE.Vector3();
+// Copa densa (1280 caras) y deformada con ruido: con el icosaedro de 80
+// caras que había antes las copas se leían como poliedros facetados, no
+// como follaje. Son InstancedMesh, así que sigue siendo un solo draw call.
+const canopyGeo = makeOrganicGeometry(new THREE.IcosahedronGeometry(0.55, 3), 0.22, 77);
+const canopyMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, treePositions.length);
+canopies.castShadow = true;
+canopies.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // se recompone cada frame (balanceo por viento)
 
 const espinilloGreen = new THREE.Color(0x7a8f4a);
 const algarroboGreen = new THREE.Color(0x4f6b3a);
@@ -1600,10 +1221,11 @@ treePositions.forEach(([x, z], i) => {
   const leanDir = treeRng() * Math.PI * 2;
 
   dummy.position.set(x, base, z);
-  // Mismo valor y mismo orden de consumo que antes: solo se guarda el yaw
-  // para poder ubicar las ramas sobre el tronco inclinado.
-  const trunkYaw = treeRng() * Math.PI * 2;
-  dummy.rotation.set(Math.cos(leanDir) * leanAngle, trunkYaw, Math.sin(leanDir) * leanAngle);
+  dummy.rotation.set(
+    Math.cos(leanDir) * leanAngle,
+    treeRng() * Math.PI * 2,
+    Math.sin(leanDir) * leanAngle
+  );
   dummy.scale.set(treeScale, treeScale, treeScale);
   dummy.updateMatrix();
   trunks.setMatrixAt(i, dummy.matrix);
@@ -1631,28 +1253,8 @@ treePositions.forEach(([x, z], i) => {
   dummy.rotation.set(rotX, rotY, rotZ);
   dummy.scale.set(sX, sY, sZ);
   dummy.updateMatrix();
-  const canopyMatrix = dummy.matrix.clone();
-  // Zona visual por la altura total del árbol, y forma según el ambiente:
-  // expuesto (poco vigor de mancha) → paraguas / viejo; adentro → joven /
-  // dos pisos. "abierto" puede tocarle a cualquiera.
-  const treeH = 1.6 * treeScale + 0.55 * sY * 1.2;
-  const tier = visualTier(x, z, treeH, "arbol_monte");
-  const variant = pickCanopyVariant(x, z, [
-    1.4 - vigor, 0.6 + vigor, 0.4 + vigor * 1.2, 0.7, 1.2 - vigor * 0.6,
-  ]);
-  treeCanopySway.push({ x, y: cy, z, rotX, rotY, rotZ, sX, sY, sZ, phase: treeRng() * Math.PI * 2, tier, variant, matrix: canopyMatrix });
-
-  if (TIER_RANK[tier] <= TIER_RANK.MIDGROUND_NEAR) {
-    // Ramas desde el 70% del fuste (siguiendo la inclinación real del
-    // tronco) hacia los dos lóbulos más grandes que no son el central.
-    _trunkEuler.set(Math.cos(leanDir) * leanAngle, trunkYaw, Math.sin(leanDir) * leanAngle);
-    const from = _v3a.set(0, 1.6 * treeScale * 0.7, 0).applyEuler(_trunkEuler).add(new THREE.Vector3(x, base, z)).toArray();
-    const targets = CANOPY_VARIANTS[variant].lobes.slice(1).sort((a, b) => b[3] - a[3]).slice(0, 3);
-    for (const [lx, ly, lz] of targets) {
-      const to = new THREE.Vector3(lx, ly, lz).applyMatrix4(canopyMatrix).toArray();
-      monteBranchSpecs.push({ from, to, rBase: 0.045 * treeScale, rTip: 0.016 * treeScale });
-    }
-  }
+  canopies.setMatrixAt(i, dummy.matrix);
+  treeCanopySway.push({ x, y: cy, z, rotX, rotY, rotZ, sX, sY, sZ, phase: treeRng() * Math.PI * 2 });
 
   // Más oscura que las hojas: la masa de la copa hace de sombra interior y
   // deja que el follaje recortado sea lo que se lee en el contorno.
@@ -1661,30 +1263,13 @@ treePositions.forEach(([x, z], i) => {
   tmpColor
     .lerpColors(espinilloGreen, algarroboGreen, treeRng())
     .multiplyScalar(0.56 + treeRng() * 0.13);
-  // El AO horneado oscurece la base de cada lóbulo; se compensa un poco el
-  // tono para que la copa conserve el valor medio aprobado.
-  const c = treeCanopySway[treeCanopySway.length - 1];
-  const castsShadow = TIER_RANK[tier] <= TIER_RANK.MIDGROUND_FAR && inSunShadowMap(x, cy, z);
-  c.castsShadow = castsShadow;
-  (castsShadow ? canopyBake.shadow : canopyBake.noShadow).push({
-    geo: canopyGeoFor(c.variant, tier),
-    matrix: c.matrix,
-    color: tmpColor.clone().multiplyScalar(1.12),
-    pivot: [x, cy, z],
-    phase: c.phase,
-    amp: TIER_WIND[tier],
-  });
+  canopies.setColorAt(i, tmpColor);
 });
 trunks.instanceMatrix.needsUpdate = true;
 if (trunks.instanceColor) trunks.instanceColor.needsUpdate = true;
-// Dos mallas para las 62 copas: las que proyectan sombra (plano medio
-// dentro del mapa de sombra del sol) y el resto, que no pasa por el pase de
-// sombra porque su sombra caería fuera del mapa o no se percibiría.
-const canopies = new THREE.Mesh(bakeInstances(canopyBake.shadow), canopyMat);
-canopies.castShadow = true;
-canopies.customDepthMaterial = windDepthMaterial("pivot", CANOPY_WIND);
+canopies.instanceMatrix.needsUpdate = true;
+canopies.instanceColor.needsUpdate = true;
 scene.add(trunks, canopies);
-if (canopyBake.noShadow.length) scene.add(new THREE.Mesh(bakeInstances(canopyBake.noShadow), canopyMat));
 
 // Follaje real sobre la copa: alpha cards con la foto de hoja repartidas
 // sobre la superficie del elipsoide. La masa de la copa sigue abajo como
@@ -1702,11 +1287,8 @@ const canopyLeaves = new THREE.InstancedMesh(
   canopyLeafMat,
   treeCanopySway.length * CANOPY_LEAVES
 );
+canopyLeaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 canopyLeaves.castShadow = true;
-// Viento en shader (antes: 5.456 matrices recompuestas por frame en CPU).
-const CANOPY_LEAF_WIND = { f1: 1.0, a1: 0.1, f2: 2.2, a2: 0.04, zRatio: 0.7, near: 7, far: 16, farAmp: 0.35 };
-windify(canopyLeafMat, "instance", CANOPY_LEAF_WIND);
-canopyLeaves.customDepthMaterial = windDepthMaterial("instance", CANOPY_LEAF_WIND, canopyLeafMat);
 
 // Generador propio para las hojas: si consumieran del rng global, sus
 // ~21k llamadas correrían toda la secuencia posterior y cambiarían dónde
@@ -1723,28 +1305,20 @@ const leafColorRng = mulberry32(410337);
 
 const canopyLeafSway = [];
 let canopyLeafIdx = 0;
-let canopyLeafSeq = 0; // cuenta TODAS las hojas, se dibujen o no: fija el tinte
-const _leafP = new THREE.Vector3();
-// Raleo por zona: a partir del plano medio lejano una hoja de 34 cm ocupa
-// pocos píxeles y solo suma parpadeo. Se descarta sin dejar de consumir los
-// generadores, para que las hojas que quedan caigan donde caían.
-const LEAF_KEEP = { FOREGROUND: 1, MIDGROUND_NEAR: 1, MIDGROUND_FAR: 0.75, BACKGROUND: 0.5 };
+const CANOPY_BASE_RADIUS = 0.55; // el radio del icosaedro con el que se hizo la copa
 
 treeCanopySway.forEach((c) => {
-  const lobes = canopyLobesFor(c.variant, c.tier);
-  const keepEvery = LEAF_KEEP[c.tier];
   for (let l = 0; l < CANOPY_LEAVES; l++) {
-    // FASE 4: la hoja se apoya sobre el lóbulo real de SU copa (en su
-    // rotación y escala), ya no sobre un elipsoide genérico.
+    // Punto sobre el elipsoide de la copa. Se empuja un poco hacia afuera
+    // (1.03) para que la hoja asome del volumen en vez de quedar enterrada.
     const theta = leafRng() * Math.PI * 2;
     const phi = Math.acos(2 * leafRng() - 1);
     const nx = Math.sin(phi) * Math.cos(theta);
     const ny = Math.cos(phi);
     const nz = Math.sin(phi) * Math.sin(theta);
-    lobeSurface(lobes, nx, ny, nz, _leafP).multiplyScalar(1.04).applyMatrix4(c.matrix);
-    const x = _leafP.x;
-    const y = _leafP.y;
-    const z = _leafP.z;
+    const x = c.x + nx * CANOPY_BASE_RADIUS * c.sX * 1.08;
+    const y = c.y + ny * CANOPY_BASE_RADIUS * c.sY * 1.08;
+    const z = c.z + nz * CANOPY_BASE_RADIUS * c.sZ * 1.08;
 
     const rotX = (leafRng() - 0.5) * 2.2;
     const rotY = Math.atan2(nx, nz) + (leafRng() - 0.5) * 1.2;
@@ -1753,13 +1327,6 @@ treeCanopySway.forEach((c) => {
     // grandes se seguían leyendo como masas lisas porque sus hojas quedaban
     // diminutas en proporción.
     const ls = (0.7 + leafRng() * 0.55) * Math.max(0.8, c.sX);
-    const tint = CANOPY_LEAF_TINTS[canopyLeafSeq++ % CANOPY_LEAF_TINTS.length];
-    const keep = keepEvery >= 1 || (l % 4) < keepEvery * 4;
-    if (!keep) {
-      jitterColor(tmpColor, tint, leafColorRng); // consumo idéntico
-      leafRng();
-      continue;
-    }
 
     dummy.position.set(x, y, z);
     dummy.rotation.set(rotX, rotY, rotZ);
@@ -1770,7 +1337,10 @@ treeCanopySway.forEach((c) => {
     // del exterior están más amarillas por el sol y las del interior más
     // oscuras y frías. Con un verde único la copa se lee como una calcomanía
     // repetida, que es lo que le daba el aspecto plástico.
-    canopyLeaves.setColorAt(canopyLeafIdx, jitterColor(tmpColor, tint, leafColorRng));
+    canopyLeaves.setColorAt(
+      canopyLeafIdx,
+      jitterColor(tmpColor, CANOPY_LEAF_TINTS[canopyLeafIdx % CANOPY_LEAF_TINTS.length], leafColorRng)
+    );
     canopyLeafSway.push({
       index: canopyLeafIdx,
       x,
@@ -1785,7 +1355,6 @@ treeCanopySway.forEach((c) => {
     canopyLeafIdx++;
   }
 });
-canopyLeaves.count = canopyLeafIdx;
 canopyLeaves.instanceMatrix.needsUpdate = true;
 if (canopyLeaves.instanceColor) canopyLeaves.instanceColor.needsUpdate = true;
 scene.add(canopyLeaves);
@@ -2065,38 +1634,6 @@ let flowerTotal = 0;
 // individuos realmente cerca del punto de vista (1,7-4,7 m); el resto de
 // las especies del matorral cae más lejos y queda para una pasada futura.
 const HERO_SHRUB_BUDGET = { "carqueja": 2, "pata de vaca": 1 };
-
-// FASE 4: los 107 arbustos no-hero dejan de ser una bola facetada por
-// especie. Cada especie tiene tres masas de lóbulos distintas (en unidades
-// de su blobRadius, base a ras del suelo) y cada ejemplar toma una sin
-// repetir la del vecino. Se hornean en una malla por material: 2 draw calls
-// (más su sombra) para todo el matorral, en vez de 5 InstancedMesh.
-const SHRUB_VARIANTS = [
-  [[0, 0.05, 0, 0.8], [0.55, -0.35, 0.2, 0.6], [-0.45, -0.38, -0.3, 0.6], [0.1, -0.4, -0.6, 0.55]],
-  [[0, 0.15, 0, 0.72], [-0.5, -0.32, 0.35, 0.64], [0.5, -0.36, -0.25, 0.6]],
-  [[0.15, 0.08, 0.1, 0.72], [-0.55, -0.38, 0.05, 0.58], [0.35, -0.4, -0.5, 0.56], [-0.1, 0.4, -0.25, 0.45], [0.3, -0.42, 0.55, 0.5]],
-];
-for (let v = 0; v < SHRUB_VARIANTS.length; v++) SHRUB_VARIANTS[v] = inflateLobes(SHRUB_VARIANTS[v], 1.12);
-const SHRUB_TIER_DETAIL = { FOREGROUND: 3, MIDGROUND_NEAR: 2, MIDGROUND_FAR: 1, BACKGROUND: 1 };
-const shrubGeoCache = new Map();
-function shrubGeoFor(speciesIndex, variant, tier) {
-  const key = `${speciesIndex}:${variant}:${tier}`;
-  if (!shrubGeoCache.has(key)) {
-    shrubGeoCache.set(
-      key,
-      buildLobeMass(SHRUB_VARIANTS[variant], SHRUB_TIER_DETAIL[tier], 3000 + speciesIndex * 101 + variant * 13, { amount: 0.26, flatten: 0.6, aoMin: 0.66, fine: 0.14, bend: 0.55, dapple: 0.34 })
-    );
-  }
-  return shrubGeoCache.get(key);
-}
-const SHRUB_WIND = { f1: 0.7, a1: 0.05, f2: 1.6, a2: 0.02, zRatio: 0.7 };
-const shrubBake = { matte: [], glossy: [] };
-const pickShrubVariant = makeVariantPicker(SHRUB_VARIANTS.length, 1.3, mulberry32(270113));
-const _shrubM = new THREE.Matrix4();
-const _shrubQ = new THREE.Quaternion();
-const _shrubE = new THREE.Euler();
-const _shrubP = new THREE.Vector3();
-const _shrubS = new THREE.Vector3();
 
 // Rng propio para los lóbulos de los arbustos hero: aislado de shrubRng y
 // shrubColorRng para no correr ninguna de las dos secuencias aprobadas.
@@ -2502,19 +2039,6 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
     const rotZ = shrubRng() * Math.PI;
     const sY = s * (0.75 + shrubRng() * 0.5);
     const isHero = heroIndices.has(i);
-    // FASE 4: matriz de la masa por lóbulos. La rotación libre en los tres
-    // ejes servía para una esfera; a una masa con base la pondría patas
-    // arriba, así que de rotX/rotZ solo queda una inclinación leve.
-    const shrubTier = isHero ? "HERO" : visualTier(x, z, 2 * species.blobRadius * Math.max(s, sY), "arbusto");
-    if (isHero) registerTier("arbusto", "HERO");
-    const shrubVariant = isHero ? 0 : pickShrubVariant(x, z);
-    _shrubE.set((rotX / Math.PI - 0.5) * 0.22, rotY, (rotZ / Math.PI - 0.5) * 0.22);
-    _shrubM.compose(
-      _shrubP.set(x, h, z),
-      _shrubQ.setFromEuler(_shrubE),
-      _shrubS.set(s * species.blobRadius, sY * species.blobRadius, s * species.blobRadius)
-    );
-    const shrubMatrix = _shrubM.clone();
     dummy.position.set(x, h, z);
     dummy.rotation.set(rotX, rotY, rotZ);
     // El blob instanciado se oculta con escala cero en vez de recortarse del
@@ -2528,25 +2052,15 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
     // Escala 0 también en el balanceo por viento: si quedara la real, el
     // render loop la recompondría cada frame y el blob oculto volvería a
     // aparecer en cuanto oscilara.
-    // FASE 4: el balanceo del cuerpo pasó al shader de la malla horneada; la
-    // fase se sigue sacando de shrubRng en el mismo lugar de la secuencia.
-    const bodyPhase = shrubRng() * Math.PI * 2;
+    shrubSway.push({
+      mesh: body, index: i, x, y: h, z, rotX, rotY, rotZ,
+      s: isHero ? 0 : s, sY: isHero ? 0 : sY,
+      phase: shrubRng() * Math.PI * 2,
+    });
     // Tono por ejemplar dentro de los márgenes naturales. Antes esto
     // multiplicaba el color de especie por un escalar, encima de un material
     // que YA lo aplicaba dos veces: de ahí los arbustos negros.
     body.setColorAt(i, jitterColor(tmpColor, species.foliage, shrubColorRng));
-    if (!isHero) {
-      shrubBake[(species.roughness ?? 0.88) < 0.6 ? "glossy" : "matte"].push({
-        geo: shrubGeoFor(speciesIndex, shrubVariant, shrubTier),
-        matrix: shrubMatrix,
-        color: tmpColor.clone().multiplyScalar(1.08),
-        // Pivote en el pie: la mata se mece desde el suelo, no desde su centro.
-        pivot: [x, groundY(x, z), z],
-        phase: bodyPhase,
-        amp: TIER_WIND[shrubTier],
-        uvScale: 0.53,
-      });
-    }
     // El hero se construye después de calcular el tinte: así su material
     // clonado usa el mismo verde que el resto de la especie vería vía
     // instanceColor, en vez del blanco base de bodyMat.
@@ -2583,22 +2097,12 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
     flowerCount = flowerIdx;
 
     const blobR = s * species.blobRadius;
-    const shrubLobes = SHRUB_VARIANTS[shrubVariant];
     for (let l = 0; l < leafCfg.count; l++) {
       const theta = shrubRng() * Math.PI * 2;
       const phi = Math.acos(2 * shrubRng() - 1); // punto uniforme sobre la esfera
-      let lx = x + Math.sin(phi) * Math.cos(theta) * blobR * 1.02;
-      let lz = z + Math.sin(phi) * Math.sin(theta) * blobR * 1.02;
-      let ly = h + Math.cos(phi) * blobR * 0.9 * 1.02;
-      if (!isHero) {
-        // FASE 4: sobre la superficie de SU masa de lóbulos.
-        lobeSurface(shrubLobes, Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta), _shrubP)
-          .multiplyScalar(1.03)
-          .applyMatrix4(shrubMatrix);
-        lx = _shrubP.x;
-        ly = _shrubP.y;
-        lz = _shrubP.z;
-      }
+      const lx = x + Math.sin(phi) * Math.cos(theta) * blobR * 1.02;
+      const lz = z + Math.sin(phi) * Math.sin(theta) * blobR * 1.02;
+      const ly = h + Math.cos(phi) * blobR * 0.9 * 1.02;
       const outwardYaw = Math.atan2(lx - x, lz - z);
       const tiltRange = (1 - leafCfg.uprightBias) * 1.4;
       const lRotX = (shrubRng() - 0.5) * tiltRange;
@@ -2618,9 +2122,6 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
     }
   });
   body.instanceMatrix.needsUpdate = true;
-  // FASE 4: el cuerpo instanciado ya no se dibuja (lo reemplaza la malla
-  // horneada por lóbulos); queda como fuente del material de los hero.
-  shrubBodyMeshes.splice(shrubBodyMeshes.indexOf(body), 1);
   // Solo se dibujan las flores realmente colocadas.
   flowers.count = flowerCount;
   shrubTotal += positions.length;
@@ -2629,28 +2130,8 @@ SHRUB_SPECIES.forEach((species, speciesIndex) => {
   if (body.instanceColor) body.instanceColor.needsUpdate = true;
   leaves.instanceMatrix.needsUpdate = true;
   if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true;
-  scene.add(flowers, leaves);
+  scene.add(body, flowers, leaves);
 });
-
-for (const [kind, items] of Object.entries(shrubBake)) {
-  if (!items.length) continue;
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    vertexColors: true,
-    map: sharedFoliageMap,
-    normalMap: sharedFoliageBump,
-    normalScale: new THREE.Vector2(0.7, 0.7),
-    roughness: kind === "glossy" ? 0.35 : 0.9,
-    metalness: 0.0,
-  });
-  windify(mat, "pivot", SHRUB_WIND);
-  const mass = new THREE.Mesh(bakeInstances(items), mat);
-  mass.castShadow = true;
-  mass.receiveShadow = true;
-  mass.customDepthMaterial = windDepthMaterial("pivot", SHRUB_WIND);
-  mass.name = `matorral_${kind}`;
-  scene.add(mass);
-}
 
 // CAPA 3 — Gramíneas y herbáceas.
 // El salto visual entre el suelo desnudo y los arbustos era lo que más
@@ -2680,20 +2161,8 @@ const grassPositions = clusteredScatter({
 const grassGeo = new THREE.ConeGeometry(0.03, 0.48, 3);
 grassGeo.translate(0, 0.25, 0);
 const grassMat = new THREE.MeshStandardMaterial({ color: 0x9a9a52, roughness: 1.0, flatShading: true });
-// FASE 4: el viento del pasto pasa al shader (2.600 matrices menos por
-// frame). La amplitud cae con la distancia: a 14 m el pasto apenas respira.
-windify(grassMat, "instance", { f1: 1.1, a1: 0.14, f2: 2.6, a2: 0.05, zRatio: 0.6, near: 6, far: 14, farAmp: 0.35 });
 const grassTufts = new THREE.InstancedMesh(grassGeo, grassMat, grassPositions.length);
-// Manchas: a media distancia el pastizal no se lee como tallos sueltos sino
-// como parches de distinto tono — más pajizo donde seca, más verde donde
-// junta agua. Ruido propio, independiente de todos los generadores.
-const grassPatchNoise = makeNoise2D(771203);
-const GRASS_STRAW = new THREE.Color(0xb3a466);
-// Raleo lejano con rng aislado: más allá de ~8 m un mechón de 3 cm de ancho
-// es una astilla de medio píxel que solo parpadea. Se descarta hasta un 38%
-// y los que quedan se ensanchan, así la mancha conserva su masa.
-const grassThinRng = mulberry32(318877);
-let grassDrawn = 0;
+grassTufts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
 // El pasto es lo que más se nota balanceándose con el viento (más alto,
 // más liviano) — guarda transform base por mechón para el render loop.
@@ -2709,21 +2178,14 @@ grassPositions.forEach(([x, z], i) => {
   const baseRotZ = (grassRng() - 0.5) * 0.3;
   const rotY = grassRng() * Math.PI * 2;
   grassSway.push({ x, y, z, s, baseRotX, baseRotZ, rotY, phase: grassRng() * Math.PI * 2 });
-  tmpColor.lerpColors(grassDry, grassWet, moisture).multiplyScalar(0.85 + grassRng() * 0.3);
-  const far = clamp01((heroDist(x, z) - 8) / 6);
-  if (grassThinRng() < far * 0.38) return; // raleado (ya consumió todo lo suyo)
-  const widen = 1 + far * 0.8;
   dummy.position.set(x, y, z);
   dummy.rotation.set(baseRotX, rotY, baseRotZ);
-  dummy.scale.set(widen, s, widen);
+  dummy.scale.set(1, s, 1);
   dummy.updateMatrix();
-  grassTufts.setMatrixAt(grassDrawn, dummy.matrix);
-  const patch = fbm(grassPatchNoise, x * 0.3, z * 0.3, 2);
-  tmpColor.lerp(GRASS_STRAW, THREE.MathUtils.smoothstep(patch, 0.5, 0.75) * 0.5).multiplyScalar(0.9 + patch * 0.2);
-  grassTufts.setColorAt(grassDrawn, tmpColor);
-  grassDrawn++;
+  grassTufts.setMatrixAt(i, dummy.matrix);
+  tmpColor.lerpColors(grassDry, grassWet, moisture).multiplyScalar(0.85 + grassRng() * 0.3);
+  grassTufts.setColorAt(i, tmpColor);
 });
-grassTufts.count = grassDrawn;
 grassTufts.instanceMatrix.needsUpdate = true;
 if (grassTufts.instanceColor) grassTufts.instanceColor.needsUpdate = true;
 scene.add(grassTufts);
@@ -3014,15 +2476,6 @@ function addBranchStub(fromX, fromY, fromZ, toX, toY, toZ, rBase, rTip, mat, rea
   return branch;
 }
 
-// FASE 4: ramas principales de los árboles del monte en primer plano y plano
-// medio cercano. Sin ellas la copa por lóbulos flotaba sobre un palo: ahora
-// entre lóbulo y lóbulo se ve la estructura que los sostiene. Se funden en
-// un solo lote estático con el resto de las ramas de esta corteza.
-const monteBranchMat = makeBarkMaterial(0xa89071);
-for (const b of monteBranchSpecs) {
-  addBranchStub(b.from[0], b.from[1], b.from[2], b.to[0], b.to[1], b.to[2], b.rBase, b.rTip, monteBranchMat, 0.85);
-}
-
 const WILLOW_COUNT = 4;
 const WHIPS_PER_WILLOW = 150;
 const willowTrunkMat = makeBarkMaterial(0x9d8a70);
@@ -3209,22 +2662,14 @@ pampasBlades.castShadow = true;
 // Penacho: masa plumosa alargada arriba de la vara. Casi blanco y con algo
 // de emisión para que capte la luz rasante del atardecer, como las plumas
 // reales retroiluminadas.
-// FASE 4: misma forma exacta que antes (mismo ruido por posición), pero con
-// los vértices soldados: el penacho del plano medio deja de ser un poliedro
-// blanco facetado, que era lo más "low poly" de toda la pradera.
-const plumeGeo = (() => {
-  let g = new THREE.IcosahedronGeometry(0.16, 2);
-  g.deleteAttribute("normal");
-  g.deleteAttribute("uv");
-  g = mergeVertices(g);
-  return makeOrganicGeometry(g, 0.45, 133);
-})();
+const plumeGeo = makeOrganicGeometry(new THREE.IcosahedronGeometry(0.16, 2), 0.45, 133);
 plumeGeo.scale(0.55, 2.3, 0.55);
 const plumeMat = new THREE.MeshStandardMaterial({
   color: 0xe8e0cf,
   roughness: 0.75,
   emissive: 0xb8ac93,
   emissiveIntensity: 0.18,
+  flatShading: true,
 });
 const pampasPlumes = new THREE.InstancedMesh(plumeGeo, plumeMat, PAMPAS_CLUMPS * PLUMES_PER_CLUMP);
 pampasPlumes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -3298,12 +2743,6 @@ pampasPositions.forEach(([cx, cz], clumpIdx) => {
   const clumpBase = groundY(cx, cz);
   contactPoints.push([cx, cz, 0.42, 0.7]);
   const clumpScale = 0.85 + rng() * 0.5;
-  // FASE 4: versión simplificada para plano medio lejano y fondo: 10 hojas
-  // más anchas en vez de 16. Se conserva lo que se lee a esa distancia
-  // —penacho, altura, movimiento y silueta— y se quita lo que no.
-  const clumpTier = heroClumpIndices.has(clumpIdx) ? "HERO" : visualTier(cx, cz, 2.2 * clumpScale, "cortadera");
-  if (clumpTier === "HERO") registerTier("cortadera", "HERO");
-  const simplified = TIER_RANK[clumpTier] >= TIER_RANK.MIDGROUND_FAR;
 
   for (let b = 0; b < BLADES_PER_CLUMP; b++) {
     const a = rng() * Math.PI * 2;
@@ -3317,14 +2756,12 @@ pampasPositions.forEach(([cx, cz], clumpIdx) => {
     const baseRotX = Math.sin(a) * lean;
     const baseRotZ = -Math.cos(a) * lean;
     const rotY = rng() * Math.PI * 2;
-    const hidden = simplified && b >= 10;
-    const bw = hidden ? 0 : simplified ? 1.35 : 1;
     dummy.position.set(x, clumpBase, z);
     dummy.rotation.set(baseRotX, rotY, baseRotZ);
-    dummy.scale.set(bw, hidden ? 0 : len, bw);
+    dummy.scale.set(1, len, 1);
     dummy.updateMatrix();
     pampasBlades.setMatrixAt(bladeIdx, dummy.matrix);
-    bladeSway.push({ index: bladeIdx, x, y: clumpBase, z, len: hidden ? 0 : len, bw, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
+    bladeSway.push({ index: bladeIdx, x, y: clumpBase, z, len, baseRotX, baseRotZ, rotY, phase: rng() * Math.PI * 2 });
     bladeIdx++;
   }
 
@@ -3431,20 +2868,6 @@ pampasPositions.forEach(([cx, cz], clumpIdx) => {
   }
 });
 pampasBlades.instanceMatrix.needsUpdate = true;
-// Matiz por mata: el penacho de la cortadera va del blanco plateado al
-// crema, y algunos tiran a rosado. Todos iguales delataban la instancia.
-{
-  const plumeTintRng = mulberry32(563311);
-  const PLUME_TINTS = [0xffffff, 0xf5eadb, 0xfbeeea, 0xeceef0];
-  for (let c = 0; c < pampasPositions.length; c++) {
-    const baseTint = PLUME_TINTS[Math.floor(plumeTintRng() * PLUME_TINTS.length)];
-    for (let q = 0; q < PLUMES_PER_CLUMP; q++) {
-      jitterColor(tmpColor, baseTint, plumeTintRng);
-      pampasPlumes.setColorAt(c * PLUMES_PER_CLUMP + q, tmpColor);
-    }
-  }
-  pampasPlumes.instanceColor.needsUpdate = true;
-}
 pampasPlumes.instanceMatrix.needsUpdate = true;
 pampasStalks.instanceMatrix.needsUpdate = true;
 heroFillerBlades.instanceMatrix.needsUpdate = true;
@@ -3459,17 +2882,7 @@ scene.add(pampasBlades, pampasPlumes, pampasStalks, heroFillerBlades, heroPlumes
 // visual de la escena.
 const OMBU_COUNT = 3;
 const ombuTrunkMat = makeBarkMaterial(0xa8947a);
-// FASE 4: la copa del ombú (plano medio, 7,5–14 m) era de las más facetadas
-// de la escena, y además 24 mallas sueltas con sombra (48 draw calls). Ahora
-// es lisa y va a un solo lote estático por material.
-const ombuLeafMat = new THREE.MeshStandardMaterial({ color: 0x3f5f33, roughness: 0.88 });
-function smoothOrganic(radius, detail, amount, seed) {
-  let g = new THREE.IcosahedronGeometry(radius, detail);
-  g.deleteAttribute("normal");
-  g.deleteAttribute("uv");
-  g = mergeVertices(g);
-  return makeOrganicGeometry(g, amount, seed); // misma forma, normales lisas
-}
+const ombuLeafMat = new THREE.MeshStandardMaterial({ color: 0x3f5f33, roughness: 0.88, flatShading: true });
 
 const ombuCrownLobes = [];
 // El ombú es solitario por definición: da la única sombra de la llanura y
@@ -3503,7 +2916,7 @@ ombuPositions.forEach(([x, z], i) => {
     lobe.scale.set(scale * 0.9, scale * 0.75, scale * 0.9);
     lobe.castShadow = true;
     lobe.receiveShadow = true;
-    addStaticPart(lobe); // FASE 4: base del ombú en un solo lote
+    scene.add(lobe);
   }
   const baseCore = new THREE.Mesh(
     makeOrganicGeometry(new THREE.IcosahedronGeometry(0.8, 2), 0.2, 260 + i),
@@ -3512,18 +2925,17 @@ ombuPositions.forEach(([x, z], i) => {
   baseCore.position.set(x, base + 0.5 * scale, z);
   baseCore.scale.set(scale, scale * 0.85, scale);
   baseCore.castShadow = true;
-  addStaticPart(baseCore);
+  scene.add(baseCore);
 
   // fuste corto y grueso que sale del bulbo
   const trunkH = 1.7 * scale;
-  // Sin índice, como los icosaedros de la base: así el lote puede fundirlos.
-  const ombuTrunkGeo = new THREE.CylinderGeometry(0.3 * scale, 0.55 * scale, trunkH, 9).toNonIndexed();
+  const ombuTrunkGeo = new THREE.CylinderGeometry(0.3 * scale, 0.55 * scale, trunkH, 9);
   ombuTrunkGeo.translate(0, trunkH / 2, 0);
   const ombuTrunk = new THREE.Mesh(ombuTrunkGeo, ombuTrunkMat);
   ombuTrunk.position.set(x, base + 0.75 * scale, z);
   contactPoints.push([x, z, 1.5 * scale, 1.25]);
   ombuTrunk.castShadow = true;
-  addStaticPart(ombuTrunk);
+  scene.add(ombuTrunk);
 
   // copa ancha y baja, hecha de varios lóbulos de follaje
   const crownY = base + 0.75 * scale + trunkH;
@@ -3531,7 +2943,10 @@ ombuPositions.forEach(([x, z], i) => {
   for (let c = 0; c < crownLobes; c++) {
     const a = (c / crownLobes) * Math.PI * 2 + rng() * 0.4;
     const rad = (0.9 + rng() * 0.7) * scale;
-    const lobe = new THREE.Mesh(smoothOrganic(1, 2, 0.3, 300 + i * 10 + c), ombuLeafMat);
+    const lobe = new THREE.Mesh(
+      makeOrganicGeometry(new THREE.IcosahedronGeometry(1, 2), 0.3, 300 + i * 10 + c),
+      ombuLeafMat
+    );
     lobe.position.set(
       x + Math.cos(a) * rad,
       crownY + (rng() - 0.35) * 0.5 * scale,
@@ -3540,7 +2955,7 @@ ombuPositions.forEach(([x, z], i) => {
     const ls = (0.95 + rng() * 0.5) * scale;
     lobe.scale.set(ls, ls * 0.62, ls);
     lobe.castShadow = true;
-    addStaticPart(lobe);
+    scene.add(lobe);
     ombuCrownLobes.push({
       x: lobe.position.x,
       y: lobe.position.y,
@@ -3551,12 +2966,14 @@ ombuPositions.forEach(([x, z], i) => {
       leafScale: scale,
     });
   }
-  const crownCore = new THREE.Mesh(smoothOrganic(1, 2, 0.25, 360 + i), ombuLeafMat);
+  const crownCore = new THREE.Mesh(
+    makeOrganicGeometry(new THREE.IcosahedronGeometry(1, 2), 0.25, 360 + i),
+    ombuLeafMat
+  );
   crownCore.position.set(x, crownY + 0.25 * scale, z);
   crownCore.scale.set(1.5 * scale, 0.85 * scale, 1.5 * scale);
   crownCore.castShadow = true;
-  addStaticPart(crownCore);
-  registerTier("ombu", visualTier(x, z, crownY - base + 1.2 * scale));
+  scene.add(crownCore);
   ombuCrownLobes.push({
     x,
     y: crownY + 0.25 * scale,
@@ -4069,159 +3486,58 @@ const FAR_BANDS = [
 
 const farTrunkGeo = new THREE.CylinderGeometry(0.1, 0.16, 1, 5);
 farTrunkGeo.translate(0, 0.5, 0);
+const farCanopyGeo = new THREE.IcosahedronGeometry(1, 0); // 20 caras: alcanza y sobra a esa distancia
 
-// FASE 4 — horizonte. Antes: 440 icosaedros de 20 caras, facetados, todos
-// con la misma forma y un verde plano por banda — una empalizada de
-// poliedros. Ahora cada árbol lejano toma una de cuatro siluetas de lóbulos
-// lisos (redonda, paraguas, emergente alta, mata baja), tiene su propio tono
-// y un reparto de alturas que rompe la línea de copas: algunos emergentes
-// aislados, grupos bajos, masas densas y claros.
-//
-// Presupuesto HORIZON: 80–100 triángulos por árbol (lóbulos de detalle 0,
-// soldados y con normales curvadas); solo los emergentes de la banda
-// cercana, que recortan contra el cielo, usan detalle 1. Todo el horizonte va
-// horneado en UNA malla sin sombra: 1 draw call para las copas y 1 para los
-// troncos, contra 6 de antes.
-//
-// Las posiciones, alturas base y escalas salen del MISMO rng global en el
-// mismo orden que antes (la fauna consume ese rng después); la variación
-// nueva viene de un generador aislado.
-const FAR_VARIANTS = [
-  { name: "redonda", lobes: [[0, 0.1, 0, 0.72], [0.5, -0.15, 0.2, 0.55], [-0.45, -0.1, -0.25, 0.58], [0.05, -0.2, -0.55, 0.5]] },
-  { name: "paraguas", lobes: [[0, 0.2, 0, 0.6], [0.6, 0.0, 0.1, 0.5], [-0.55, 0.02, -0.1, 0.52], [0.1, -0.05, 0.6, 0.48], [-0.1, 0.05, -0.6, 0.46]] },
-  { name: "emergente", lobes: [[0, 0.3, 0, 0.58], [0.22, -0.1, 0.1, 0.55], [-0.2, -0.18, -0.12, 0.5], [0.08, 0.6, -0.05, 0.4]] },
-  { name: "mata_baja", lobes: [[0, 0, 0, 0.6], [0.7, -0.1, 0.1, 0.5], [-0.65, -0.08, 0.15, 0.5], [0.2, -0.1, -0.55, 0.45], [-0.3, -0.12, 0.6, 0.42]] },
-];
-for (const v of FAR_VARIANTS) v.lobes = inflateLobes(v.lobes, 1.18);
-const farGeoCache = new Map();
-function farGeoFor(variant, detail) {
-  const key = `${variant}:${detail}`;
-  if (!farGeoCache.has(key)) {
-    farGeoCache.set(key, buildLobeMass(FAR_VARIANTS[variant].lobes, detail, 5000 + variant * 29, { amount: 0.3, flatten: 0.5, aoMin: 0.62, fine: 0.16, bend: 0.8, dapple: 0.34 }));
-  }
-  return farGeoCache.get(key);
-}
-const farRng = mulberry32(915527);
-const pickFarVariant = makeVariantPicker(FAR_VARIANTS.length, 5, farRng);
-const farBake = [];
-const farTrunkPlacements = [];
-const _farM = new THREE.Matrix4();
-const _farQ = new THREE.Quaternion();
-const _farE = new THREE.Euler();
-const _farP = new THREE.Vector3();
-const _farS = new THREE.Vector3();
+for (const band of FAR_BANDS) {
+  const trunkMatFar = new THREE.MeshStandardMaterial({ color: 0x584734, roughness: 1.0, flatShading: true });
+  const canopyMatFar = new THREE.MeshStandardMaterial({ color: band.color, roughness: 1.0, flatShading: true });
+  const farTrunks = new THREE.InstancedMesh(farTrunkGeo, trunkMatFar, band.count);
+  const farCanopies = new THREE.InstancedMesh(farCanopyGeo, canopyMatFar, band.count);
 
-FAR_BANDS.forEach((band, bandIndex) => {
+  // Índice propio: las posiciones descartadas por la máscara del horizonte
+  // no pueden dejar huecos, o la InstancedMesh dibujaría esas instancias
+  // amontonadas en el origen de la escena.
   let placed = 0;
   for (let i = 0; i < band.count * 2 && placed < band.count; i++) {
     const a = rng() * Math.PI * 2;
     // La profundidad también sigue la máscara: donde hay mancha, el monte se
-    // mete hacia adentro; donde no, retrocede.
+    // mete hacia adentro; donde no, retrocede. Sin esto las tres bandas se
+    // superponen y rellenan los huecos de las otras, y el horizonte vuelve
+    // a ser una empalizada continua.
     const depth = fbm(monteNoise, Math.cos(a) * 4 + 700, Math.sin(a) * 4 + 700, 2);
     const r = band.rMin + (0.1 + 0.9 * depth) * (band.rMax - band.rMin);
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
-    // Máscara a lo largo del horizonte: huecos de campo abierto y manchas.
+    // La banda se leía como un cinturón parejo de árboles idénticos. Una
+    // máscara de ruido a lo largo del horizonte abre huecos de campo
+    // abierto y junta manchas de monte, que es lo que se ve desde la
+    // pradera: el horizonte no es una empalizada continua.
     const horizon = fbm(monteNoise, Math.cos(a) * 6 + 400, Math.sin(a) * 6 + 400, 3);
     if (horizon < 0.47) continue;
-    let h = bellRange(rng, band.hMin, band.hMax) * (0.78 + horizon * 0.45);
-    const trunkYaw = rng() * Math.PI * 2;
-    let spread = h * (0.42 + rng() * 0.22);
-    const crownRX = rng() * 0.4;
-    const crownRY = rng() * Math.PI * 2;
-    const crownRZ = rng() * 0.4;
-    const crownSY = 0.6 + rng() * 0.3;
+    // Altura en campana y modulada por la máscara: las manchas densas son
+    // más altas que los grupos ralos del borde.
+    const h = bellRange(rng, band.hMin, band.hMax) * (0.78 + horizon * 0.45);
+
+    dummy.position.set(x, 0, z);
+    dummy.rotation.set(0, rng() * Math.PI * 2, 0);
+    dummy.scale.set(1, h * 0.55, 1);
+    dummy.updateMatrix();
+    farTrunks.setMatrixAt(placed, dummy.matrix);
+
+    const spread = h * (0.42 + rng() * 0.22);
+    dummy.position.set(x, h * 0.62, z);
+    dummy.rotation.set(rng() * 0.4, rng() * Math.PI * 2, rng() * 0.4);
+    dummy.scale.set(spread, spread * (0.6 + rng() * 0.3), spread);
+    dummy.updateMatrix();
+    farCanopies.setMatrixAt(placed, dummy.matrix);
     placed++;
-
-    // Siluetas: en el corazón de la mancha manda la copa redonda y densa; en
-    // el borde ralo, el paraguas y la mata baja. El emergente es escaso.
-    const edge = clamp01((0.62 - horizon) / 0.15);
-    const variant = pickFarVariant(x, z, [1.2 - edge * 0.6, 0.6 + edge * 0.6, 0.22, 0.25 + edge * 0.9]);
-    let trunkK = 1;
-    if (variant === 2) {
-      h *= 1.35 + farRng() * 0.3; // emergente aislado: quiebra la línea de copas
-      spread *= 0.8;
-    } else if (variant === 3) {
-      h *= 0.5 + farRng() * 0.2; // grupo bajo: el horizonte también tiene huecos bajos
-      spread *= 1.15;
-      trunkK = 0.25;
-    } else {
-      h *= 0.85 + farRng() * 0.3;
-    }
-    const crownY = variant === 3 ? h * 0.4 : h * 0.62;
-    _farE.set(crownRX, crownRY, crownRZ);
-    _farM.compose(_farP.set(x, crownY, z), _farQ.setFromEuler(_farE), _farS.set(spread, spread * crownSY, spread));
-    // Tono propio de cada árbol dentro de la paleta de su banda (perspectiva
-    // atmosférica intacta): unos más oliva, otros más oscuros o secos.
-    jitterColor(tmpColor, band.color, farRng);
-    if (farRng() < 0.14) tmpColor.lerp(new THREE.Color(0x8a8a55), 0.25);
-    farBake.push({
-      geo: farGeoFor(variant, bandIndex === 0 && variant === 2 ? 1 : 0),
-      matrix: _farM.clone(),
-      color: tmpColor.clone().multiplyScalar(0.72),
-      pivot: [x, 0, z],
-      phase: farRng() * Math.PI * 2,
-      amp: TIER_WIND.HORIZON,
-    });
-    farTrunkPlacements.push({ x, y: 0, z, yaw: trunkYaw, h: h * 0.55 * trunkK });
-    registerTier("horizonte", "HORIZON");
   }
-});
-
-// FONDO (BACKGROUND, 18–25 m): entre el último árbol del monte (17,5 m) y la
-// primera banda del horizonte (26 m) había una llanura vacía que cortaba la
-// continuidad del paisaje. Masas bajas de matorral y algún árbol chico, en
-// manchas que siguen la máscara del monte (no uniformes) y dejan claros.
-const bgRng = mulberry32(417733);
-for (let i = 0; i < 280; i++) {
-  const a = bgRng() * Math.PI * 2;
-  const r = 18 + bgRng() * 7;
-  const x = Math.cos(a) * r;
-  const z = Math.sin(a) * r;
-  const mask = fbm(monteNoise, x * 0.12 + 150, z * 0.12 + 150, 3);
-  const pick = bgRng();
-  if (mask < 0.44 || pick > (mask - 0.44) * 3.2) continue; // manchas y claros
-  const isTree = bgRng() < 0.3;
-  const variant = isTree ? (bgRng() < 0.5 ? 0 : 1) : 3;
-  const h = isTree ? 2.4 + bgRng() * 1.4 : 0.9 + bgRng() * 0.9;
-  const spread = isTree ? h * (0.38 + bgRng() * 0.12) : h * (0.9 + bgRng() * 0.5);
-  const y = Math.abs(x) < 15 && Math.abs(z) < 15 ? groundY(x, z) : 0;
-  const crownY = y + (isTree ? h * 0.66 : spread * 0.35);
-  _farE.set((bgRng() - 0.5) * 0.3, bgRng() * Math.PI * 2, (bgRng() - 0.5) * 0.3);
-  _farM.compose(_farP.set(x, crownY, z), _farQ.setFromEuler(_farE), _farS.set(spread, spread * (0.55 + bgRng() * 0.25), spread));
-  jitterColor(tmpColor, isTree ? 0x4b633c : 0x4f6139, bgRng);
-  // Detalle 1 solo donde la masa todavía es plano medio (>3,5° en pantalla).
-  const bgTier = visualTier(x, z, h);
-  farBake.push({
-    geo: farGeoFor(variant, TIER_RANK[bgTier] <= TIER_RANK.MIDGROUND_FAR ? 1 : 0),
-    matrix: _farM.clone(),
-    color: tmpColor.clone().multiplyScalar(0.64),
-    pivot: [x, y, z],
-    phase: bgRng() * Math.PI * 2,
-    amp: TIER_WIND.BACKGROUND,
-  });
-  if (isTree) farTrunkPlacements.push({ x, y, z, yaw: bgRng() * Math.PI * 2, h: h * 0.62 });
-  registerTier("fondo_masas", bgTier);
+  farTrunks.count = placed;
+  farCanopies.count = placed;
+  farTrunks.instanceMatrix.needsUpdate = true;
+  farCanopies.instanceMatrix.needsUpdate = true;
+  scene.add(farTrunks, farCanopies);
 }
-
-const farCanopyMat = new THREE.MeshStandardMaterial({ roughness: 1.0, metalness: 0.0, vertexColors: true });
-windify(farCanopyMat, "pivot", { f1: 0.45, a1: 0.035, f2: 1.1, a2: 0.015, zRatio: 0.8 });
-const farCanopies = new THREE.Mesh(bakeInstances(farBake), farCanopyMat);
-farCanopies.name = "horizonte_y_fondo";
-const farTrunks = new THREE.InstancedMesh(
-  farTrunkGeo,
-  new THREE.MeshStandardMaterial({ color: 0x584734, roughness: 1.0 }),
-  farTrunkPlacements.length
-);
-farTrunkPlacements.forEach((t, i) => {
-  dummy.position.set(t.x, t.y, t.z);
-  dummy.rotation.set(0, t.yaw, 0);
-  dummy.scale.set(1, Math.max(0.05, t.h), 1);
-  dummy.updateMatrix();
-  farTrunks.setMatrixAt(i, dummy.matrix);
-});
-farTrunks.instanceMatrix.needsUpdate = true;
-scene.add(farTrunks, farCanopies);
 
 // --- Fauna nativa: carpinchos junto a la laguna + bandada de aves --------
 // Sin locomoción por pedido explícito: la fauna es lo que se mueve/anima
@@ -4853,10 +4169,6 @@ const QC_CAMERAS = {
   QC_HERO_TREE_FOREGROUND: { pos: [0, 1.6, 4], look: [0.9, 2.0, 6.0] },
   QC_ROOT_CLOSE: { pos: [0.9, 1.9, 4.9], look: [0.9, 0.0, 6.0] },
   QC_MUD_TRANSITION: { pos: [2.0, 0.5, 3.0], look: [3.6, 0.1, 4.1] },
-  // FASE 4 — peor caso: elegida midiendo candidatos en v060 (la de más
-  // triángulos, ~300k con sombras, 250 draw calls). En el mismo cuadro entran
-  // laguna, juncal, monte, arbustos, plano medio, fondo y horizonte.
-  QC_WORST_CASE: { pos: [-3, 2.2, 9], look: [4, 0.8, -2] },
 };
 
 if (import.meta.env.DEV) {
@@ -4894,18 +4206,6 @@ if (import.meta.env.DEV) {
     ceibos: CEIBO_COUNT,
     sauces: WILLOW_COUNT,
     butias: butiaPositions.length,
-    // FASE 4: lo que realmente se dibuja tras el raleo del plano medio.
-    gramineas_dibujadas: grassTufts.count,
-    hojas_copa_monte_dibujadas: canopyLeaves.count,
-    arboles_horizonte_y_fondo: farBake.length,
-  });
-  // FASE 4: zonificación visual de cada sistema (para MIDGROUND_AUDIT).
-  window.__tiers = () => ({
-    zonas: tierRegistry,
-    copas_monte: treeCanopySway.map((c) => ({ x: +c.x.toFixed(2), z: +c.z.toFixed(2), d: +heroDist(c.x, c.z).toFixed(2), zona: c.tier, variante: CANOPY_VARIANTS[c.variant].name, sombra: c.castsShadow })),
-    tris_copa_por_variante_y_zona: Object.fromEntries([...canopyGeoCache].map(([k, g]) => [k, g.index.count / 3])),
-    tris_arbusto_por_variante_y_zona: Object.fromEntries([...shrubGeoCache].map(([k, g]) => [k, g.index.count / 3])),
-    tris_horizonte_por_variante: Object.fromEntries([...farGeoCache].map(([k, g]) => [k, g.index.count / 3])),
   });
 
   // FASE 2.5 — auditoría geométrica real: triángulos por tipo de malla,
@@ -5045,53 +4345,8 @@ const listenerUp = new THREE.Vector3();
 
 flushStaticBatches();
 
-// --- FASE 4: medición en el visor (?perf=1) --------------------------------
-// En este entorno se renderiza por software y los FPS no significan nada; en
-// las gafas sí. Con ?perf=1 en la URL, cada 10 s se registra en la consola
-// (chrome://inspect sobre el Quest) y en window.__perfLog: FPS medio, frame
-// time medio, p95, p99, máximo, frames que exceden 1,5× el presupuesto
-// (stutter), draw calls y triángulos del último frame.
-const PERF_ENABLED = new URLSearchParams(location.search).has("perf");
-const perfState = { last: 0, windowStart: 0, samples: [] };
-function perfTick(time) {
-  if (!PERF_ENABLED) return;
-  if (perfState.last) perfState.samples.push(time - perfState.last);
-  perfState.last = time;
-  if (!perfState.windowStart) perfState.windowStart = time;
-  if (time - perfState.windowStart < 10000 || perfState.samples.length < 30) return;
-  const a = [...perfState.samples].sort((x, y) => x - y);
-  const mean = a.reduce((acc, v) => acc + v, 0) / a.length;
-  const q = (f) => a[Math.min(a.length - 1, Math.floor(f * a.length))];
-  const hz = renderer.xr.getSession?.()?.frameRate || 72;
-  const budget = 1000 / hz;
-  const report = {
-    enXR: renderer.xr.isPresenting,
-    hz,
-    fps: +(1000 / mean).toFixed(1),
-    frameMs: +mean.toFixed(2),
-    p95: +q(0.95).toFixed(2),
-    p99: +q(0.99).toFixed(2),
-    max: +a[a.length - 1].toFixed(2),
-    stutters: a.filter((v) => v > budget * 1.5).length,
-    frames: a.length,
-    drawCalls: renderer.info.render.calls,
-    triangles: renderer.info.render.triangles,
-  };
-  console.log("[perf]", JSON.stringify(report));
-  (window.__perfLog ??= []).push(report);
-  perfState.samples.length = 0;
-  perfState.windowStart = time;
-}
-
-// FASE 4 (estabilidad al girar la cabeza): three compila cada shader la
-// primera vez que su material entra en cuadro, y eso congela ese frame
-// (medido: 30–80 ms al girar hacia 15° y 195°, ya en v060). En VR es un tirón
-// visible la primera vez que se mira hacia ahí. Se compilan todos al inicio.
-renderer.compile(scene, camera);
-
 renderer.setAnimationLoop((time) => {
   currentTime = time;
-  perfTick(time);
 
   for (const ring of poiMarkers) {
     ring.material.opacity = 0.5 + 0.3 * Math.sin(time * 0.002 + ring.position.x);
@@ -5196,9 +4451,26 @@ renderer.setAnimationLoop((time) => {
   // los árboles (más lento y leve) — recompone la matriz de cada instancia
   // sumando una oscilación a su rotación base. Barato: ~565 instancias en
   // total, nada comparado con el trabajo de sombreado/raster por frame.
-  // FASE 4: pasto, cuerpos de arbusto, copas del monte y sus hojas se mecen
-  // en el vertex shader (windify); acá solo avanza el reloj del viento.
-  windUniforms.uWindTime.value = t;
+  for (let i = 0; i < grassSway.length; i++) {
+    const g = grassSway[i];
+    const sway = Math.sin(t * 1.1 + g.phase) * 0.14 + Math.sin(t * 2.6 + g.phase * 1.7) * 0.05;
+    dummy.position.set(g.x, g.y, g.z);
+    dummy.rotation.set(g.baseRotX + sway, g.rotY, g.baseRotZ + sway * 0.6);
+    dummy.scale.set(1, g.s, 1);
+    dummy.updateMatrix();
+    grassTufts.setMatrixAt(i, dummy.matrix);
+  }
+  grassTufts.instanceMatrix.needsUpdate = true;
+
+  for (const b of shrubSway) {
+    const sway = Math.sin(t * 0.7 + b.phase) * 0.05 + Math.sin(t * 1.6 + b.phase * 1.3) * 0.02;
+    dummy.position.set(b.x, b.y, b.z);
+    dummy.rotation.set(b.rotX + sway, b.rotY, b.rotZ + sway * 0.7);
+    dummy.scale.set(b.s, b.sY, b.s);
+    dummy.updateMatrix();
+    b.mesh.setMatrixAt(b.index, dummy.matrix);
+  }
+  for (const mesh of shrubBodyMeshes) mesh.instanceMatrix.needsUpdate = true;
 
   // Las hojas individuales tienen su propio balanceo (más rápido y liviano
   // que el del cuerpo del arbusto) — no siguen exactamente la rotación del
@@ -5243,7 +4515,7 @@ renderer.setAnimationLoop((time) => {
     const sway = Math.sin(t * 1.15 + bl.phase) * 0.17 + Math.sin(t * 2.5 + bl.phase * 1.6) * 0.06;
     dummy.position.set(bl.x, bl.y, bl.z);
     dummy.rotation.set(bl.baseRotX + sway, bl.rotY, bl.baseRotZ + sway * 0.7);
-    dummy.scale.set(bl.bw, bl.len, bl.bw);
+    dummy.scale.set(1, bl.len, 1);
     dummy.updateMatrix();
     pampasBlades.setMatrixAt(bl.index, dummy.matrix);
   }
@@ -5332,6 +4604,28 @@ renderer.setAnimationLoop((time) => {
     butiaLeaflets.setMatrixAt(fr.index, dummy.matrix);
   }
   butiaLeaflets.instanceMatrix.needsUpdate = true;
+
+  for (let i = 0; i < treeCanopySway.length; i++) {
+    const c = treeCanopySway[i];
+    const sway = Math.sin(t * 0.5 + c.phase) * 0.035 + Math.sin(t * 1.2 + c.phase * 1.4) * 0.015;
+    dummy.position.set(c.x, c.y, c.z);
+    dummy.rotation.set(c.rotX + sway, c.rotY, c.rotZ + sway * 0.8);
+    dummy.scale.set(c.sX, c.sY, c.sZ);
+    dummy.updateMatrix();
+    canopies.setMatrixAt(i, dummy.matrix);
+  }
+  canopies.instanceMatrix.needsUpdate = true;
+
+  // Las hojas de la copa se mueven un poco más que la masa: son livianas.
+  for (const cl of canopyLeafSway) {
+    const sway = Math.sin(t * 1.0 + cl.phase) * 0.1 + Math.sin(t * 2.2 + cl.phase * 1.5) * 0.04;
+    dummy.position.set(cl.x, cl.y, cl.z);
+    dummy.rotation.set(cl.rotX + sway, cl.rotY, cl.rotZ + sway * 0.7);
+    dummy.scale.set(cl.ls, cl.ls, cl.ls);
+    dummy.updateMatrix();
+    canopyLeaves.setMatrixAt(cl.index, dummy.matrix);
+  }
+  canopyLeaves.instanceMatrix.needsUpdate = true;
 
   // Mismo balanceo para las hojas de ombú, ceibo y sauce. Si quedaran
   // quietas mientras el resto del monte se mueve, la inmovilidad se notaría

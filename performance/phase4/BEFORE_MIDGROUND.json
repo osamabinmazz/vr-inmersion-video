@@ -1,0 +1,680 @@
+{
+ "tag": "BEFORE_MIDGROUND",
+ "errs": [],
+ "totals": {
+  "loadedTris": 313853,
+  "meshes": 460,
+  "instances": 22373
+ },
+ "veg": {
+  "arboles_monte": 62,
+  "arbustos": 110,
+  "flores": 91,
+  "gramineas": 2600,
+  "cobertura_suelo": 3200,
+  "juncos": 540,
+  "humedal_gramineas": 900,
+  "cortadera_matas": 26,
+  "ombues": 3,
+  "ceibos": 3,
+  "sauces": 4,
+  "butias": 4
+ },
+ "tiers": null,
+ "memory": {
+  "geometryMB": 4.7,
+  "instanceBuffersMB": 1.5,
+  "textureMB": 526.3,
+  "shadowMapMB": 16,
+  "totalEstimateMB": 548.6,
+  "textures": [
+   {
+    "w": 4096,
+    "h": 4096,
+    "bytes": 89478485,
+    "name": "grass_ground/diff_4k.jpg",
+    "MB": 85.3
+   },
+   {
+    "w": 4096,
+    "h": 4096,
+    "bytes": 89478485,
+    "name": "grass_ground/arm_4k.jpg",
+    "MB": 85.3
+   },
+   {
+    "w": 4096,
+    "h": 4096,
+    "bytes": 89478485,
+    "name": "grass_ground/nor_gl_4k.jpg",
+    "MB": 85.3
+   },
+   {
+    "w": 4096,
+    "h": 4096,
+    "bytes": 89478485,
+    "name": "grass_ground/disp_4k.jpg",
+    "MB": 85.3
+   },
+   {
+    "w": 4096,
+    "h": 4096,
+    "bytes": 89478485,
+    "name": "grass_ground/diff_4k.jpg",
+    "MB": 85.3
+   },
+   {
+    "w": 3072,
+    "h": 4096,
+    "bytes": 50331648,
+    "name": "PMREM.cubeUv",
+    "MB": 48
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "bark/color.jpg",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "bark/normal.jpg",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "bark/rough.jpg",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "leaf_pinnada/color.png",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "leaf_pinnada/rough.png",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "leaf_pinnada/opacity.png",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "leaf/color.png",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "leaf/rough.png",
+    "MB": 5.3
+   },
+   {
+    "w": 1024,
+    "h": 1024,
+    "bytes": 5592405,
+    "name": "leaf/opacity.png",
+    "MB": 5.3
+   },
+   {
+    "w": 512,
+    "h": 512,
+    "bytes": 1398101,
+    "name": "CANVAS",
+    "MB": 1.3
+   },
+   {
+    "w": 256,
+    "h": 256,
+    "bytes": 349525,
+    "name": "CANVAS",
+    "MB": 0.3
+   },
+   {
+    "w": 256,
+    "h": 256,
+    "bytes": 349525,
+    "name": "CANVAS",
+    "MB": 0.3
+   },
+   {
+    "w": 256,
+    "h": 256,
+    "bytes": 349525,
+    "name": "CANVAS",
+    "MB": 0.3
+   },
+   {
+    "w": 256,
+    "h": 256,
+    "bytes": 349525,
+    "name": "CANVAS",
+    "MB": 0.3
+   },
+   {
+    "w": 512,
+    "h": 128,
+    "bytes": 349525,
+    "name": "CANVAS",
+    "MB": 0.3
+   },
+   {
+    "w": 512,
+    "h": 128,
+    "bytes": 349525,
+    "name": "CANVAS",
+    "MB": 0.3
+   },
+   {
+    "w": 512,
+    "h": 128,
+    "bytes": 349525,
+    "name": "CANVAS",
+    "MB": 0.3
+   }
+  ],
+  "geometries": 415,
+  "rendererInfo": {
+   "geometries": 416,
+   "textures": 24
+  }
+ },
+ "metrics": {
+  "QC_GROUND": {
+   "calls": 174,
+   "tris": 281572,
+   "callsWithShadow": 281,
+   "trisWithShadow": 454464,
+   "shadowCalls": 107,
+   "shadowTris": 172892,
+   "cpuUpdateMs": 4.1,
+   "cpuUpdateP95": 9.6,
+   "cpuUpdateMax": 9.6,
+   "renderSubmitMs": 2.9,
+   "renderSubmitMax": 10.2,
+   "cpuFrameMs": 7,
+   "swiftshaderRasterMs": 2.9,
+   "overdraw": {
+    "mean": 21.89,
+    "p95": 204,
+    "max": 255
+   }
+  },
+  "QC_MID": {
+   "calls": 277,
+   "tris": 301171,
+   "callsWithShadow": 384,
+   "trisWithShadow": 474063,
+   "shadowCalls": 107,
+   "shadowTris": 172892,
+   "cpuUpdateMs": 3.7,
+   "cpuUpdateP95": 5.2,
+   "cpuUpdateMax": 5.2,
+   "renderSubmitMs": 3.7,
+   "renderSubmitMax": 206.2,
+   "cpuFrameMs": 7.4,
+   "swiftshaderRasterMs": 3.7,
+   "overdraw": {
+    "mean": 30.97,
+    "p95": 255,
+    "max": 255
+   }
+  },
+  "QC_HIGH": {
+   "calls": 447,
+   "tris": 311579,
+   "callsWithShadow": 554,
+   "trisWithShadow": 484471,
+   "shadowCalls": 107,
+   "shadowTris": 172892,
+   "cpuUpdateMs": 7.85,
+   "cpuUpdateP95": 8.1,
+   "cpuUpdateMax": 8.1,
+   "renderSubmitMs": 3.85,
+   "renderSubmitMax": 7.4,
+   "cpuFrameMs": 11.7,
+   "swiftshaderRasterMs": 3.9,
+   "overdraw": {
+    "mean": 44.38,
+    "p95": 255,
+    "max": 255
+   }
+  },
+  "QC_WATER": {
+   "calls": 150,
+   "tris": 278145,
+   "callsWithShadow": 257,
+   "trisWithShadow": 451037,
+   "shadowCalls": 107,
+   "shadowTris": 172892,
+   "cpuUpdateMs": 3.85,
+   "cpuUpdateP95": 10.5,
+   "cpuUpdateMax": 10.5,
+   "renderSubmitMs": 2.55,
+   "renderSubmitMax": 3.9,
+   "cpuFrameMs": 6.4,
+   "swiftshaderRasterMs": 2.5,
+   "overdraw": {
+    "mean": 25.82,
+    "p95": 223,
+    "max": 255
+   }
+  },
+  "QC_WORST_CASE": {
+   "calls": 264,
+   "tris": 300639,
+   "callsWithShadow": 371,
+   "trisWithShadow": 473531,
+   "shadowCalls": 107,
+   "shadowTris": 172892,
+   "cpuUpdateMs": 3.7,
+   "cpuUpdateP95": 4,
+   "cpuUpdateMax": 4,
+   "renderSubmitMs": 3.35,
+   "renderSubmitMax": 4.2,
+   "cpuFrameMs": 7.05,
+   "swiftshaderRasterMs": 3.4,
+   "overdraw": {
+    "mean": 27.62,
+    "p95": 255,
+    "max": 255
+   }
+  }
+ },
+ "sweep": [
+  {
+   "yaw": 0,
+   "look": [
+    0,
+    0.4,
+    -6
+   ],
+   "calls": 170,
+   "tris": 284508,
+   "callsWithShadow": 277,
+   "trisWithShadow": 457400,
+   "cpuUpdateMs": 4,
+   "renderSubmitMs": 2.2,
+   "cpuFrameMs": 6.2
+  },
+  {
+   "yaw": 15,
+   "look": [
+    -2.59,
+    0.4,
+    -5.66
+   ],
+   "calls": 186,
+   "tris": 271688,
+   "callsWithShadow": 293,
+   "trisWithShadow": 444580,
+   "cpuUpdateMs": 4.1,
+   "renderSubmitMs": 2,
+   "cpuFrameMs": 6.1
+  },
+  {
+   "yaw": 30,
+   "look": [
+    -5,
+    0.4,
+    -4.66
+   ],
+   "calls": 239,
+   "tris": 274110,
+   "callsWithShadow": 346,
+   "trisWithShadow": 447002,
+   "cpuUpdateMs": 3.6,
+   "renderSubmitMs": 2.1,
+   "cpuFrameMs": 5.7
+  },
+  {
+   "yaw": 45,
+   "look": [
+    -7.07,
+    0.4,
+    -3.07
+   ],
+   "calls": 273,
+   "tris": 275678,
+   "callsWithShadow": 380,
+   "trisWithShadow": 448570,
+   "cpuUpdateMs": 3.8,
+   "renderSubmitMs": 2.6,
+   "cpuFrameMs": 6.4
+  },
+  {
+   "yaw": 60,
+   "look": [
+    -8.66,
+    0.4,
+    -1
+   ],
+   "calls": 250,
+   "tris": 274556,
+   "callsWithShadow": 357,
+   "trisWithShadow": 447448,
+   "cpuUpdateMs": 3.8,
+   "renderSubmitMs": 2.1,
+   "cpuFrameMs": 5.9
+  },
+  {
+   "yaw": 75,
+   "look": [
+    -9.66,
+    0.4,
+    1.41
+   ],
+   "calls": 244,
+   "tris": 274160,
+   "callsWithShadow": 351,
+   "trisWithShadow": 447052,
+   "cpuUpdateMs": 3.9,
+   "renderSubmitMs": 2.6,
+   "cpuFrameMs": 6.5
+  },
+  {
+   "yaw": 90,
+   "look": [
+    -10,
+    0.4,
+    4
+   ],
+   "calls": 218,
+   "tris": 273454,
+   "callsWithShadow": 325,
+   "trisWithShadow": 446346,
+   "cpuUpdateMs": 4,
+   "renderSubmitMs": 1.9,
+   "cpuFrameMs": 5.9
+  },
+  {
+   "yaw": 105,
+   "look": [
+    -9.66,
+    0.4,
+    6.59
+   ],
+   "calls": 226,
+   "tris": 273722,
+   "callsWithShadow": 333,
+   "trisWithShadow": 446614,
+   "cpuUpdateMs": 4,
+   "renderSubmitMs": 3.3,
+   "cpuFrameMs": 7.3
+  },
+  {
+   "yaw": 120,
+   "look": [
+    -8.66,
+    0.4,
+    9
+   ],
+   "calls": 180,
+   "tris": 271466,
+   "callsWithShadow": 287,
+   "trisWithShadow": 444358,
+   "cpuUpdateMs": 3.7,
+   "renderSubmitMs": 1.9,
+   "cpuFrameMs": 5.6
+  },
+  {
+   "yaw": 135,
+   "look": [
+    -7.07,
+    0.4,
+    11.07
+   ],
+   "calls": 115,
+   "tris": 268614,
+   "callsWithShadow": 222,
+   "trisWithShadow": 441506,
+   "cpuUpdateMs": 3.3,
+   "renderSubmitMs": 3.1,
+   "cpuFrameMs": 6.4
+  },
+  {
+   "yaw": 150,
+   "look": [
+    -5,
+    0.4,
+    12.66
+   ],
+   "calls": 87,
+   "tris": 271038,
+   "callsWithShadow": 194,
+   "trisWithShadow": 443930,
+   "cpuUpdateMs": 3.6,
+   "renderSubmitMs": 1.4,
+   "cpuFrameMs": 5
+  },
+  {
+   "yaw": 165,
+   "look": [
+    -2.59,
+    0.4,
+    13.66
+   ],
+   "calls": 75,
+   "tris": 257098,
+   "callsWithShadow": 182,
+   "trisWithShadow": 429990,
+   "cpuUpdateMs": 3.3,
+   "renderSubmitMs": 2.9,
+   "cpuFrameMs": 6.2
+  },
+  {
+   "yaw": 180,
+   "look": [
+    0,
+    0.4,
+    14
+   ],
+   "calls": 81,
+   "tris": 269670,
+   "callsWithShadow": 188,
+   "trisWithShadow": 442562,
+   "cpuUpdateMs": 3.4,
+   "renderSubmitMs": 1.3,
+   "cpuFrameMs": 4.7
+  },
+  {
+   "yaw": 195,
+   "look": [
+    2.59,
+    0.4,
+    13.66
+   ],
+   "calls": 87,
+   "tris": 272645,
+   "callsWithShadow": 194,
+   "trisWithShadow": 445537,
+   "cpuUpdateMs": 3.3,
+   "renderSubmitMs": 1.4,
+   "cpuFrameMs": 4.7
+  },
+  {
+   "yaw": 210,
+   "look": [
+    5,
+    0.4,
+    12.66
+   ],
+   "calls": 98,
+   "tris": 272273,
+   "callsWithShadow": 205,
+   "trisWithShadow": 445165,
+   "cpuUpdateMs": 3.2,
+   "renderSubmitMs": 1.5,
+   "cpuFrameMs": 4.7
+  },
+  {
+   "yaw": 225,
+   "look": [
+    7.07,
+    0.4,
+    11.07
+   ],
+   "calls": 101,
+   "tris": 272137,
+   "callsWithShadow": 208,
+   "trisWithShadow": 445029,
+   "cpuUpdateMs": 3.2,
+   "renderSubmitMs": 1.6,
+   "cpuFrameMs": 4.8
+  },
+  {
+   "yaw": 240,
+   "look": [
+    8.66,
+    0.4,
+    9
+   ],
+   "calls": 109,
+   "tris": 273313,
+   "callsWithShadow": 216,
+   "trisWithShadow": 446205,
+   "cpuUpdateMs": 3.3,
+   "renderSubmitMs": 1.5,
+   "cpuFrameMs": 4.8
+  },
+  {
+   "yaw": 255,
+   "look": [
+    9.66,
+    0.4,
+    6.59
+   ],
+   "calls": 117,
+   "tris": 274709,
+   "callsWithShadow": 224,
+   "trisWithShadow": 447601,
+   "cpuUpdateMs": 3.3,
+   "renderSubmitMs": 8.2,
+   "cpuFrameMs": 11.5
+  },
+  {
+   "yaw": 270,
+   "look": [
+    10,
+    0.4,
+    4
+   ],
+   "calls": 139,
+   "tris": 277489,
+   "callsWithShadow": 246,
+   "trisWithShadow": 450381,
+   "cpuUpdateMs": 3.4,
+   "renderSubmitMs": 1.8,
+   "cpuFrameMs": 5.2
+  },
+  {
+   "yaw": 285,
+   "look": [
+    9.66,
+    0.4,
+    1.41
+   ],
+   "calls": 159,
+   "tris": 278583,
+   "callsWithShadow": 266,
+   "trisWithShadow": 451475,
+   "cpuUpdateMs": 3.4,
+   "renderSubmitMs": 2.2,
+   "cpuFrameMs": 5.6
+  },
+  {
+   "yaw": 300,
+   "look": [
+    8.66,
+    0.4,
+    -1
+   ],
+   "calls": 179,
+   "tris": 279551,
+   "callsWithShadow": 286,
+   "trisWithShadow": 452443,
+   "cpuUpdateMs": 3.6,
+   "renderSubmitMs": 2.5,
+   "cpuFrameMs": 6.1
+  },
+  {
+   "yaw": 315,
+   "look": [
+    7.07,
+    0.4,
+    -3.07
+   ],
+   "calls": 161,
+   "tris": 277321,
+   "callsWithShadow": 268,
+   "trisWithShadow": 450213,
+   "cpuUpdateMs": 3.3,
+   "renderSubmitMs": 2.1,
+   "cpuFrameMs": 5.4
+  },
+  {
+   "yaw": 330,
+   "look": [
+    5,
+    0.4,
+    -4.66
+   ],
+   "calls": 182,
+   "tris": 278263,
+   "callsWithShadow": 289,
+   "trisWithShadow": 451155,
+   "cpuUpdateMs": 3.4,
+   "renderSubmitMs": 2.4,
+   "cpuFrameMs": 5.8
+  },
+  {
+   "yaw": 345,
+   "look": [
+    2.59,
+    0.4,
+    -5.66
+   ],
+   "calls": 193,
+   "tris": 278171,
+   "callsWithShadow": 300,
+   "trisWithShadow": 451063,
+   "cpuUpdateMs": 3.3,
+   "renderSubmitMs": 6.4,
+   "cpuFrameMs": 9.7
+  }
+ ],
+ "summary": {
+  "sweepMeanTris": 273926,
+  "sweepMeanCalls": 161.2,
+  "sweepMaxTris": 284508,
+  "sweepMaxTrisYaw": 0,
+  "sweepMaxCalls": 273,
+  "sweepMaxCallsYaw": 45,
+  "sweepMinTris": 257098,
+  "sweepMinCalls": 75,
+  "sweepMeanTrisWithShadow": 446818,
+  "sweepMaxTrisWithShadow": 457400,
+  "sweepMeanCallsWithShadow": 268.2,
+  "sweepMaxCallsWithShadow": 380,
+  "sweepCpuFrameMean": 6.09,
+  "sweepCpuFrameMax": 11.5,
+  "sweepSubmitMax": 8.2
+ }
+}

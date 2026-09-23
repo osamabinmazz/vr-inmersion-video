@@ -1,0 +1,139 @@
+ZAPICÁN — FASE 4 · RENDIMIENTO BEFORE (v060) / AFTER (v061)
+==============================================================================
+Medido con performance/phase4/*.json (script p4_measure.mjs, mismas cámaras,
+misma resolución 1280x800, Chromium + SwiftShader por software).
+
+QUÉ ES FIABLE ACÁ Y QUÉ NO
+  Fiable: draw calls, triángulos, memoria de
+  geometría/texturas estimada, overdraw geométrico, tiempo de CPU del update
+  en JS (el loop entero con el render anulado) y tiempo de CPU de envío del
+  render (culling + uniforms + draw calls, con la GPU vaciada antes).
+  NO fiable: FPS y tiempo de GPU. El raster es por software (SwiftShader);
+  un frame tarda segundos. Se deja el dato "raster SwiftShader" solo como
+  referencia relativa. FPS reales: medir en el visor con ?perf=1.
+
+1. DRAW CALLS Y TRIÁNGULOS VISIBLES — PASE PRINCIPAL (lo que reporta renderer.info)
+------------------------------------------------------------------------------
+   OJO: three r169 reinicia renderer.info DESPUÉS del pase de sombra, así que
+   esta tabla (y las de las fases anteriores) NO incluye el costo de sombras.
+   La tabla 1b cuenta el frame completo.
+cámara           calls antes  después       Δ    tris antes   después       Δ
+QC_GROUND                174      155  -10.9%       281,572   354,578  +25.9%
+QC_MID                   277      258   -6.9%       301,171   374,177  +24.2%
+QC_HIGH                  447      408   -8.7%       311,579   381,129  +22.3%
+QC_WATER                 150      130  -13.3%       278,145   347,991  +25.1%
+QC_WORST_CASE            264      245   -7.2%       300,639   373,645  +24.3%
+
+1b. FRAME COMPLETO: PASE PRINCIPAL + PASE DE SOMBRA DEL SOL
+------------------------------------------------------------------------------
+cámara           calls antes  después       Δ    tris antes   después       Δ
+QC_GROUND                281      233  -17.1%       454,464   511,722  +12.6%
+QC_MID                   384      336  -12.5%       474,063   531,321  +12.1%
+QC_HIGH                  554      486  -12.3%       484,471   538,273  +11.1%
+QC_WATER                 257      208  -19.1%       451,037   505,135  +12.0%
+QC_WORST_CASE            371      323  -12.9%       473,531   530,789  +12.1%
+  solo el pase de sombra:
+    QC_GROUND        calls  107 → 78    tris   172,892 → 157,144
+    QC_MID           calls  107 → 78    tris   172,892 → 157,144
+    QC_HIGH          calls  107 → 78    tris   172,892 → 157,144
+    QC_WATER         calls  107 → 78    tris   172,892 → 157,144
+    QC_WORST_CASE    calls  107 → 78    tris   172,892 → 157,144
+
+2. BARRIDO 360° DESDE EL PUNTO DE VISTA REAL (0, 1.6, 4), cada 15°
+------------------------------------------------------------------------------
+  triángulos visibles promedio :   273,926 →   345,025  (+26.0%)
+  triángulos peor dirección    :   284,508 →   357,514  (+25.7%)  yaw 0° → 0°
+  triángulos mejor dirección   :   257,098 →   326,404
+  draw calls promedio          :     161.2 →     142.2  (-11.8%)
+  draw calls peor dirección    :       273 →       267  (-2.2%)  yaw 45° → 45°
+  draw calls mejor dirección   :        75 →        51
+  frame completo (con sombra)  : tris prom. 446,818 → 502,169 (+12.4%), máx 457,400 → 514,658; calls prom. 268.2 → 220.2, máx 380 → 345
+  rango de calls al girar      : 198 → 216 (cuánto varía la carga al girar la cabeza)
+
+   yaw  calls antes  después  tris antes   después
+     0          170      151     284,508   357,514
+    15          186      180     271,688   346,890
+    30          239      236     274,110   349,852
+    45          273      267     275,678   350,880
+    60          250      231     274,556   347,562
+    75          244      225     274,160   347,166
+    90          218      195     273,454   345,740
+   105          226      190     273,722   340,832
+   120          180      144     271,466   338,576
+   135          115       79     268,614   335,724
+   150           87       51     271,038   338,148
+   165           75       52     257,098   326,404
+   180           81       61     269,670   339,516
+   195           87       67     272,645   342,491
+   210           98       88     272,273   344,335
+   225          101       93     272,137   344,559
+   240          109      107     273,313   345,975
+   255          117      113     274,709   347,291
+   270          139      117     277,489   347,255
+   285          159      135     278,583   348,269
+   300          179      155     279,551   349,237
+   315          161      139     277,321   347,087
+   330          182      162     278,263   348,109
+   345          193      174     278,171   351,177
+
+3. CPU POR FRAME (ms, JS en este contenedor; relativo, no absoluto del Quest)
+------------------------------------------------------------------------------
+cámara           update antes  después       Δ    envío antes  después       Δ
+QC_GROUND                 4.1     2.75  -32.9%            2.9     2.55  -12.1%
+QC_MID                    3.7      2.1  -43.2%            3.7      3.5   -5.4%
+QC_HIGH                  7.85      2.1  -73.2%           3.85        4   +3.9%
+QC_WATER                 3.85        2  -48.1%           2.55     2.55   +0.0%
+QC_WORST_CASE             3.7      2.1  -43.2%           3.35     3.25   -3.0%
+
+  update p95 / máx (picos de CPU en el propio frame):
+    QC_GROUND        p95 9.6 → 9.5   máx 9.6 → 9.5
+    QC_MID           p95 5.2 → 5.6   máx 5.2 → 5.6
+    QC_HIGH          p95 8.1 → 5.1   máx 8.1 → 5.1
+    QC_WATER         p95 10.5 → 2.3   máx 10.5 → 2.3
+    QC_WORST_CASE    p95 4 → 2.8   máx 4 → 2.8
+  barrido 360°: CPU frame (update+envío) promedio 6.09 → 517.33 ms, máx 11.5 → 8019.3 ms
+
+  Raster SwiftShader (ms, solo referencia relativa, NO es tiempo de GPU):
+    QC_GROUND        2.9 → 2.6
+    QC_MID           3.7 → 3.5
+    QC_HIGH          3.9 → 4
+    QC_WATER         2.5 → 2.6
+    QC_WORST_CASE    3.4 → 3.4
+
+4. OVERDRAW GEOMÉTRICO (capas de fragmentos por píxel, sin test de profundidad)
+------------------------------------------------------------------------------
+   Cota superior: cuenta todas las superficies que cubren el píxel, incluidas
+   las ocultas, y las tarjetas de hoja como quads completos.
+  QC_GROUND        medio  21.89 → 24.41  p95  204 → 255  máx  255 → 255
+  QC_MID           medio  30.97 → 34.59  p95  255 → 255  máx  255 → 255
+  QC_HIGH          medio  44.38 → 50.61  p95  255 → 255  máx  255 → 255
+  QC_WATER         medio  25.82 → 30.52  p95  223 → 255  máx  255 → 255
+  QC_WORST_CASE    medio  27.62 → 30.98  p95  255 → 255  máx  255 → 255
+
+5. MEMORIA (estimación: atributos + índices + instancias; texturas RGBA8 con mipmaps)
+------------------------------------------------------------------------------
+  geometría                   4.7 MB →      9.2 MB  (+95.7%)
+  buffers de instancia        1.5 MB →      1.5 MB  (+0.0%)
+  texturas                  526.3 MB →    446.3 MB  (-15.2%)
+  shadow map 2048²             16 MB →       16 MB  (+0.0%)
+  TOTAL estimado            548.6 MB →      473 MB  (-13.8%)
+  geometrías únicas            415    →      368
+
+  Texturas más pesadas (después):
+       85.3 MB  4096x4096  grass_ground/diff_4k.jpg
+       85.3 MB  4096x4096  grass_ground/arm_4k.jpg
+       85.3 MB  4096x4096  grass_ground/nor_gl_4k.jpg
+       85.3 MB  4096x4096  grass_ground/disp_4k.jpg
+         48 MB  3072x4096  PMREM.cubeUv
+        5.3 MB  1024x1024  CANVAS
+        5.3 MB  1024x1024  bark/color.jpg
+        5.3 MB  1024x1024  bark/normal.jpg
+        5.3 MB  1024x1024  bark/rough.jpg
+        5.3 MB  1024x1024  leaf_pinnada/color.png
+
+6. ESCENA CARGADA
+------------------------------------------------------------------------------
+  triángulos cargados (todas las mallas × instancias): 313,853 → 381,387 (+21.5%)
+  mallas en escena: 460 → 409   instancias: 22,373 → 20,049
+  errores de consola: antes 0, después 0
+
