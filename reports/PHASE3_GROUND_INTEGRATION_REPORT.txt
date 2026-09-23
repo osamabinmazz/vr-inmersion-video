@@ -1,0 +1,45 @@
+ZAPICÁN — FASE 3: INTEGRACIÓN SUELO / RAÍCES / BARRO / HUMEDAD
+==============================================================
+
+OBJETOS CORREGIDOS
+- Ceibo hero: 6 raíces superficiales + 16 hojas caídas.
+- Sauces hero (2): 5 raíces + 14 hojas caídas cada uno.
+- Arbustos hero (3): 4 raíces + 10 hojas caídas cada uno.
+- Cortaderas hero (2): 8 hojas caídas de base cada una.
+- Borde de agua hero: 12 restos de junco + 4 charcos.
+Total: 28 raíces, 90 hojas caídas, 12 restos, 4 charcos.
+
+RAÍCES: cada una termina en la altura REAL del terreno en su extremo, así
+que desaparece gradualmente dentro del suelo en vez de quedar como tentáculo
+encima. Longitud, grosor y rumbo varían por raíz.
+
+BARRO / HUMEDAD: gradiente de orilla existente (v02) + emissive de Fase 1
+(sin negro absoluto) + charcos con brillo propio en el borde hero.
+
+BUG CORREGIDO EN LA REVISIÓN (importante)
+El suelo visible NO está en groundY: el material le suma en la GPU un
+displacementMap de hasta 0.15 m, y en la orilla hay una malla a y=0.162.
+Toda la hojarasca, los restos y los charcos estaban ENTERRADOS (verificado
+subiéndolos en vivo: sin la corrección no se veía ninguno). Ahora se apoyan
+sobre la superficie visible: el mismo JPG de displacement leído en los
+vértices e interpolado como en la GPU, y raycast contra agua y orilla.
+Los restos de junco además salían todos paralelos (orden de rotación);
+ahora cada uno tiene su propio rumbo.
+
+DECALS: no usados (no hay sistema de decals en el proyecto).
+MICRORELIEVE ALREDEDOR DE TRONCOS: no hecho (requiere tocar la malla del
+terreno, que el brief pidió no modificar).
+MATERIAL DE SUELO MULTICAPA con 7 nombres: no reimplementado; el suelo ya
+mezcla tonos por máscara procedural desde v02.
+
+DRAW CALLS / TRIÁNGULOS: reports/PERFORMANCE_v02_vs_v051.txt
+FPS: no medible en este entorno (render por software); medir en el visor.
+
+PROBLEMAS RESTANTES
+1. La hojarasca se ve verde oliva, no marrón seco: el tinte multiplica una
+   foto de hoja verde. Hace falta un ajuste de shader para "secarla".
+2. Hojas colgantes/cards de las copas siguen siendo planas.
+3. 107 de 110 arbustos siguen siendo esferas facetadas.
+4. El monte de fondo repite el mismo diseño.
+5. El estilo facetado (flatShading + ruido radial) sigue visible de cerca
+   incluso en los hero: más facetas, pero la misma lógica.

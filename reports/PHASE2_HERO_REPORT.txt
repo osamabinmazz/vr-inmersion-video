@@ -1,0 +1,42 @@
+ZAPICÁN — FASE 2: HERO ASSETS DE PRIMER PLANO
+=============================================
+
+Selección: por distancia REAL al punto de vista fijo (heroDist), no a mano.
+
+ASSET                SPECIES                     QUÉ SE HIZO
+HERO_TREE_01         Ceibo (Erythrina crista-galli)  copa 5 lóbulos subdiv. nivel 4, ramas de
+                                                      conexión, tronco 7->14 lados, raíces, hojarasca
+HERO_TREE_02/03      Sauce criollo (Salix humboldtiana) copa 3-4 lóbulos nivel 4, ramas, tronco
+                                                      8->16 lados, raíces, hojarasca
+HERO_BUSH_01..03     Carqueja x2, pata de vaca x1    3-4 lóbulos nivel 3-4, tallos, raíces,
+                                                      hojarasca, color por ejemplar
+HERO_CORTADERA_01/02 Cortaderia selloana             penachos nivel 4 (instanciados), 16 hojas de
+                                                      relleno por mata, hojarasca de base
+HERO_REEDS_01        Juncal (todo el perímetro)       curvatura + sección 3->6 lados
+HERO_WATER_EDGE_01   —                               12 restos de junco caídos (rumbos variados),
+                                                      4 charcos de barro húmedo
+
+Subdivisión por distancia (equivalente a LOD en una escena sin locomoción):
+nivel 4 bajo 6 m (árboles) / 3 m (arbustos), nivel 3 hasta 12 m / 6 m, nivel 2
+más lejos. Se decide una vez al construir la escena.
+
+NO HECHO (no aplica o fuera de alcance)
+- MASTER / GAME_READY / LOD0-3 como archivos y baking de normales: no hay
+  pipeline de assets; toda la geometría es procedural en tiempo real.
+- Assets externos: no existe un modelo CC0 confiable de ombú ni ceibo;
+  importar un árbol genérico contradice la regla SPECIES_TO_VERIFY.
+- Viento en lóbulos de copa: son estáticos (se mueven penachos, hojas de
+  cortadera, juncos, relleno y ramas colgantes del sauce).
+
+TRIÁNGULOS Y DRAW CALLS: ver reports/PERFORMANCE_v02_vs_v051.txt.
+Desde el punto de vista del visor hacia el árbol hero (QC_HERO_TREE_FOREGROUND):
+72 -> 73 draw calls, 243k -> 271k triángulos (+11%).
+
+CORRECCIONES HECHAS EN LA REVISIÓN
+- Los penachos hero tomaban su fase de viento del generador aleatorio
+  compartido y corrían la posición de todo lo generado después (ceibo,
+  ombú, butiá). Ahora usan un generador propio; distribución verificada
+  idéntica a v02 posición por posición.
+- 10 penachos hero, de mallas sueltas a una InstancedMesh.
+- Lóbulos, ramas, raíces y tallos estáticos fusionados en una malla por
+  material: devolvió los draw calls al nivel de v02 (ver tabla).

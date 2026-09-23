@@ -1,0 +1,33 @@
+ZAPICÁN — AUDITORÍA GEOMÉTRICA v02 vs v051
+============================================================
+
+Agrupado por tipo de geometría (el sistema es procedural y no nombra sus
+objetos). 'mallas' = objetos en escena; en las instanciadas cada malla
+dibuja muchas instancias con una sola llamada.
+
+TIPO                               MALLAS v02   v051   TRIS v02     v051
+BoxGeometry                                 9      9        108      108
+BufferGeometry                              1      9       1792    17928
+CapsuleGeometry                            19     19       3464     3464
+CircleGeometry (instanciada)                0      1          0       40
+ConeGeometry                               43     43        416      416
+ConeGeometry (instanciada)                  8      9      78224    89616
+CylinderGeometry                          106    106       3352     3732
+CylinderGeometry (instanciada)              5      6      13360    13552
+IcosahedronGeometry                        67     48      12060     8640
+IcosahedronGeometry (instanciada)          15     16      89060    94060
+PlaneGeometry                              54     54      51306    51306
+PlaneGeometry (instanciada)                 9     10      19164    19344
+RingGeometry                                4      3        232      192
+ShapeGeometry                               1      1        127      127
+SphereGeometry                            122    122      11168    11168
+
+Lectura:
+- BufferGeometry 1 -> 9: son las mallas FUSIONADAS (raíces, ramas, tallos y
+  lóbulos de copa hero, una por material). Concentran la subdivisión hero.
+- IcosahedronGeometry suelta 67 -> 48: los lóbulos de sauce, ceibo y arbustos
+  hero dejaron de ser mallas sueltas al fusionarse.
+- CircleGeometry, +1 instanciada: charcos del borde de agua hero.
+- PlaneGeometry instanciada +1: hojarasca (90 hojas en una sola llamada).
+- RingGeometry varía entre capturas: son los anillos de chapoteo del agua,
+  que aparecen y desaparecen con el tiempo. No es un cambio real.

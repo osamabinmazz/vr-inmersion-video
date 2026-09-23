@@ -1,0 +1,40 @@
+ZAPICÁN — FASE 1: REPARACIÓN CRÍTICA
+====================================
+
+Versión: v051 (snapshots/ZAPICAN_v051_ground_integration.js)
+Antes:   v02  (snapshots/ZAPICAN_v02_materials_ground_water.js)
+Capturas: comparisons/v02_vs_v051/  (BEFORE_v02_* / AFTER_v051_*)
+Rendimiento: reports/PERFORMANCE_v02_vs_v051.txt
+
+CORREGIDO
+---------
+1. Agua plana/blanca.
+   Causa real: el lóbulo especular del sol (DirectionalLight, intensidad 2.1)
+   sobre una lámina casi horizontal tapaba el albedo verde-pardo, que ya era
+   correcto. Se comparó con capturas recortadas lado a lado.
+   Cambio: specularIntensity 0.3 -> 0.02, clearcoat 0.03 -> 0,
+   roughness 0.5 -> 0.78, envMapIntensity 0.08 -> 0.04.
+   Cámara: QC_WATER.
+
+2. Franja negra del borde.
+   Causa real: no era el color del barro (luminosidad ~0.23), sino la sombra
+   de los juncos densos sobre una franja angosta.
+   Cambio: emissive 0x2a2010 en el material de la orilla, que sostiene el
+   tono mínimo en sombra sin aplanar la variación de luz.
+
+3. Juncos/cortadera como "agujas rectas".
+   Cambio: curvatura cuadrática en la geometría COMPARTIDA de junco, sedge,
+   hoja de cortadera y relleno (bendBladeGeometry). Cero draw calls extra;
+   cada instancia ya gira en Y, así que la curva sale orientada distinto.
+
+4-6. Auditoría de assets del primer plano, 3 arbustos y 3 árboles:
+   cubiertos por Fase 2 y Fase 3 (ver sus informes).
+
+PROBLEMAS QUE CONTINÚAN (al cierre de esta fase)
+------------------------------------------------
+- Hojas colgantes/cards de las copas siguen siendo planas.
+- Solo 3 de 110 arbustos tienen tratamiento hero.
+- El monte de fondo (62 árboles) repite el mismo diseño.
+- La jerarquía HERO/FOREGROUND/MIDGROUND/BACKGROUND existe de hecho
+  (heroDist) pero no como sistema documentado con presupuestos.
+- Transición suelo/vegetación resuelta solo junto al agua (-> Fase 3).

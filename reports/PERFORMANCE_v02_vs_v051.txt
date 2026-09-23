@@ -1,0 +1,44 @@
+ZAPICÁN — RENDIMIENTO v02 (antes) vs v051 (actual)
+============================================================
+
+Método: la MISMA cámara sobre las dos versiones del código, en el mismo
+servidor. v02 = snapshots/ZAPICAN_v02_materials_ground_water.js (commit
+22372e0). v051 = snapshots/ZAPICAN_v051_ground_integration.js.
+Por cámara se hace un render explícito y se lee renderer.info de ESE frame
+(draw calls y triángulos enviados a la GPU, incluida la pasada de sombras).
+
+CORRECCIÓN: los informes anteriores decían que triángulos y draw calls
+eran 'iguales en todas las direcciones'. Era un error de medición: se
+leía renderer.info antes de que se renderizara el frame con la cámara
+nueva (en headless el bucle de animación no avanza solo). Estos números
+reemplazan a todos los anteriores.
+
+CÁMARA                     DRAW v02   v051     Δ%   TRIS v02     v051     Δ%
+QC_GROUND                       169    177  +4.7%     256280   281820 +10.0%
+QC_MID                          288    278  -3.5%     271401   301199 +11.0%
+QC_HIGH                         446    449  +0.7%     281035   311775 +10.9%
+QC_WATER                        141    138  -2.1%     249833   277549 +11.1%
+QC_TREE_CLOSE                   151    149  -1.3%     249451   277315 +11.2%
+QC_BUSH_CLOSE                   184    186  +1.1%     250392   272268  +8.7%
+QC_REED_BASE                    141    151  +7.1%     248053   277269 +11.8%
+QC_HERO_WATER_EDGE              119    121  +1.7%     246317   274933 +11.6%
+QC_HERO_TREE_FOREGROUND          72     73  +1.4%     243453   271101 +11.4%
+QC_ROOT_CLOSE                    51     60 +17.6%     240233   263561  +9.7%
+QC_MUD_TRANSITION                89     91  +2.2%     244585   272337 +11.3%
+
+TOTALES DE ESCENA (todo lo cargado, no solo lo visible)
+  Triángulos cargados       283793  ->    313693
+  Mallas (objetos)             462  ->       456
+  Instancias                 22232  ->     22369
+  Geometrías en GPU            413  ->       407
+  Texturas en GPU               24  ->        24
+
+Distribución: __vegCounts idéntico. Además se verificó posición por
+posición: los 20 troncos y todas las instancias de monte, ombú, butiá,
+pasto, cobertura, flores, juncos y humedal coinciden exactamente con v02.
+
+NO MEDIDO: FPS, GPU frame time, CPU frame time, VRAM real.
+Este entorno renderiza por software (SwiftShader, sin GPU). Un FPS medido
+acá no dice nada sobre el visor. Hay que medirlo en el dispositivo destino
+(p. ej. Meta Quest con OVR Metrics Tool) desde QC_GROUND, que es el punto
+de vista real del usuario.
