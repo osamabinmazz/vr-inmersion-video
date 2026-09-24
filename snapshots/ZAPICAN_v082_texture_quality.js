@@ -4525,41 +4525,11 @@ function gustMultiplierAt(t) {
 }
 
 
-// Mejora de calidad (a pedido: que la fauna se reconozca fácilmente, con
-// más detalle de superficie) — mismo criterio que sharedFoliageMap: un
-// moteado gris neutro (pelaje/plumaje) que multiplica sobre el color propio
-// de cada material, generado con gen_fauna_tex.mjs. No es fotorrealismo de
-// pelo/pluma real (eso pide geometría de otro orden, ver informe de fase),
-// pero rompe el polígono liso de color plano que se veía antes.
-function loadMottle(path, repeatX, repeatY) {
-  const t = texLoader.load(path);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(repeatX, repeatY);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-// Relieve: la misma imagen sirve de bumpMap (es un mapa de luz/sombra, ya
-// funciona como alto/bajo), pero SIN decodificar como sRGB — un bumpMap es
-// dato lineal (altura), no color, y clonar en vez de recargar no vuelve a
-// pedir el archivo por red.
-function bumpFrom(mottleTex) {
-  const b = mottleTex.clone();
-  b.colorSpace = THREE.NoColorSpace;
-  b.needsUpdate = true;
-  return b;
-}
-const furTex = loadMottle("/assets/textures/fauna_mottle/fur_mottle.png", 4, 4);
-const furBump = bumpFrom(furTex);
-const featherTexBig = loadMottle("/assets/textures/fauna_mottle/feather_mottle.png", 3, 3); // ñandú
-const featherBumpBig = bumpFrom(featherTexBig);
-const featherTexSmall = loadMottle("/assets/textures/fauna_mottle/feather_mottle.png", 1.4, 1.4); // tero, mucho más chico
-const featherBumpSmall = bumpFrom(featherTexSmall);
-
 // Carpinchos (Hydrochoerus hydrochaeris): cuerpo achatado, orejas
 // pequeñas, patas cortas — habitan justo en el borde de cuerpos de agua
 // como esta laguna, así que van ahí.
-const capybaraMat = new THREE.MeshStandardMaterial({ color: 0x6b5438, roughness: 0.95, flatShading: true, map: furTex, bumpMap: furBump, bumpScale: 0.012 });
-const capybaraDarkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughness: 0.95, flatShading: true, map: furTex, bumpMap: furBump, bumpScale: 0.012 });
+const capybaraMat = new THREE.MeshStandardMaterial({ color: 0x6b5438, roughness: 0.95, flatShading: true });
+const capybaraDarkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughness: 0.95, flatShading: true });
 
 function makeCapybara() {
   const group = new THREE.Group();
@@ -4777,11 +4747,9 @@ butterflyHomes.forEach(([hx, hz]) => {
 // No vuela, así que camina y pastorea por la pradera abierta — nunca cerca
 // del agua como el carpincho. Silueta: cuerpo grande y ovalado, cuello
 // largo y flexible, patas altas de tres dedos, plumaje gris pardo.
-const rheaBodyMat = new THREE.MeshStandardMaterial({ color: 0x8d8271, roughness: 0.95, flatShading: true, map: featherTexBig, bumpMap: featherBumpBig, bumpScale: 0.015 });
-const rheaDarkMat = new THREE.MeshStandardMaterial({ color: 0x5a5245, roughness: 0.95, flatShading: true, map: featherTexBig.clone(), bumpMap: featherBumpBig.clone(), bumpScale: 0.015 });
+const rheaBodyMat = new THREE.MeshStandardMaterial({ color: 0x8d8271, roughness: 0.95, flatShading: true });
+const rheaDarkMat = new THREE.MeshStandardMaterial({ color: 0x5a5245, roughness: 0.95, flatShading: true });
 const rheaLegMat = new THREE.MeshStandardMaterial({ color: 0x6b6355, roughness: 0.9, flatShading: true });
-rheaDarkMat.map.repeat.set(1.2, 1.2); // pico/pata: piezas chicas, la misma escala se vería como ruido
-rheaDarkMat.bumpMap.repeat.set(1.2, 1.2); // el relieve tiene que seguir la misma escala que el color
 
 function makeRhea() {
   const group = new THREE.Group();
@@ -4893,9 +4861,9 @@ rheaPositions.forEach(([x, z], i) => {
 // corto, blanco y gris con la pechera negra, copete fino en la nuca y patas
 // rojas. Su grito de alarma "tero-tero" se sintetiza más abajo, junto al
 // resto del ambiente.
-const teroBodyMat = new THREE.MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.9, flatShading: true, map: featherTexSmall, bumpMap: featherBumpSmall, bumpScale: 0.01 });
-const teroWhiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.9, flatShading: true, map: featherTexSmall.clone(), bumpMap: featherBumpSmall.clone(), bumpScale: 0.01 });
-const teroBlackMat = new THREE.MeshStandardMaterial({ color: 0x25272a, roughness: 0.85, flatShading: true, map: featherTexSmall.clone(), bumpMap: featherBumpSmall.clone(), bumpScale: 0.01 });
+const teroBodyMat = new THREE.MeshStandardMaterial({ color: 0x9aa3a8, roughness: 0.9, flatShading: true });
+const teroWhiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.9, flatShading: true });
+const teroBlackMat = new THREE.MeshStandardMaterial({ color: 0x25272a, roughness: 0.85, flatShading: true });
 const teroLegMat = new THREE.MeshStandardMaterial({ color: 0xa8342c, roughness: 0.8, flatShading: true });
 
 function makeTero() {

@@ -5,8 +5,23 @@ dist/
 .env
 video/out/
 
-# Assets 4K descargados por viewer/scripts/download-assets.sh (no se commitean)
-viewer/public/assets/
+# Assets 4K descargados por viewer/scripts/download-assets.sh (no se commitean).
+# git no entra a revisar una excepción (!) si un ancestro ya está ignorado
+# como directorio completo, así que acá se ignora por contenido (*) en cada
+# nivel en vez de por directorio, para poder des-ignorar foliage_mottle/ más
+# abajo sin des-ignorar el resto (ground/bark/leaf/hdri, que sí son
+# descargas de varios MB y siguen sin commitearse).
+viewer/public/assets/*
+!viewer/public/assets/textures/
+viewer/public/assets/textures/*
+# Excepción: derivados chicos generados a partir de las fotos de hoja ya
+# commiteadas (no una descarga de varios MB) — sin esto el arbusto se queda
+# sin textura en un clone limpio. Se generan una sola vez con
+# gen_foliage_tex.mjs y se commitean directo, en vez de sumarle una
+# dependencia de Playwright al script de setup (que hoy solo usa curl/unzip).
+!viewer/public/assets/textures/foliage_mottle/
+# Igual criterio para el moteado de plumaje/pelaje de la fauna (v083).
+!viewer/public/assets/textures/fauna_mottle/
 
 # Bytecode y empaquetado del addon de Blender
 __pycache__/

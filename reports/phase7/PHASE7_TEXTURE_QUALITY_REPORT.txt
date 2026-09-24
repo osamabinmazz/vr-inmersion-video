@@ -1,0 +1,158 @@
+ZAPICÁN — FASE 7 (parcial) · MEJORA DE CALIDAD DE TEXTURAS
+==============================================================================
+Snapshot: ZAPICAN_v082_texture_quality (antes: v081_native_fauna, Fase 6).
+Cambio acotado, a pedido directo: "mejora la calidad de las texturas".
+Sigue en primera persona VR, misma geometría procedural, misma fauna nativa.
+
+------------------------------------------------------------------------------
+1. QUÉ SE ENCONTRÓ ANTES DE TOCAR NADA
+------------------------------------------------------------------------------
+El proyecto YA tenía un pipeline de texturas reales (no 100% procedural en
+materiales, al contrario de lo que asumí al principio de esta conversación):
+  - Suelo: foto PBR real 4K (difuso+normal+rugosidad+AO+displacement),
+    calidad ya buena — no se tocó.
+  - Corteza de tronco: foto PBR real (CC0, ambientCG) — no se tocó.
+  - Hojas de copa de árbol: fotos reales de hoja recortadas por alfa
+    ("ancha" para ombú/ceibo, "pinnada" para espinillo/algarrobo) — no se
+    tocó, ya es de buena calidad.
+  - Arbustos (110 en escena, todas las especies): el "moteado" de luz y
+    sombra del follaje era 260 elipses grises dibujadas al azar en un
+    canvas de 256×256 (makeFoliageMap) — sin ninguna foto real. Esto SÍ
+    se veía plano/genérico comparado con el resto.
+
+------------------------------------------------------------------------------
+2. CAMBIO HECHO
+------------------------------------------------------------------------------
+Se reemplazó ese moteado procedural por una textura generada a partir de la
+MISMA foto de hoja "ancha" ya aprobada en el proyecto (no se trajo ningún
+asset nuevo de afuera): varias copias de la hoja, rotadas y escaladas al
+azar (semilla fija, reproducible), compuestas sobre un fondo gris neutro y
+desaturadas a escala de grises — mismo criterio de diseño que la versión
+procedural (el mapa aporta solo luz/sombra; el color lo pone el tinte por
+instancia, una vez, para no oscurecer al cuadrado).
+
+Generado una sola vez con un script (gen_foliage_tex.mjs, no forma parte del
+build) y guardado como PNG estático en
+  viewer/public/assets/textures/foliage_mottle/mottle_ancha.png (512×512)
+  viewer/public/assets/textures/foliage_mottle/mottle_pinnada.png (512×512,
+  generado por si se necesita diferenciar por familia más adelante — todos
+  los arbustos actuales usan hoja "ancha", así que por ahora solo se usa el
+  primero)
+igual que el resto de las texturas del proyecto (archivo en disco, no canvas
+en tiempo de ejecución).
+
+Un solo punto de cambio en el código: sharedFoliageMap ahora carga ese PNG
+en vez de llamar a makeFoliageMap(). El bump procedural (makeFoliageBumpMap)
+se dejó igual — ya cumple su función de variación fina de superficie y no
+depende de que el follaje sea "real". La función makeFoliageMap() se dejó
+en el archivo sin usar, por si hay que volver atrás.
+
+------------------------------------------------------------------------------
+3. RESULTADO VISUAL
+------------------------------------------------------------------------------
+Antes: arbustos con un verde casi uniforme, manchas circulares difusas sin
+forma reconocible.
+Después: se ve el follaje con forma de hoja real (venación, borde
+aserrado), en primer plano y también a distancia media — capturas en
+comparisons/phase7/ (AFTER_shrub_close.jpg, AFTER_wide.jpg, AFTER_mid.jpg;
+la textura en sí, foliage_mottle_texture.png).
+
+------------------------------------------------------------------------------
+4. RENDIMIENTO
+------------------------------------------------------------------------------
+Mismo script y mismas 4 cámaras que en las Fases 4-6 (p4_measure.mjs).
+
+                        v081 (Fase 6)     v082 (después)
+  Triángulos cargados   378.419           378.459
+  Mallas                369               370
+  VRAM estimada         427,9 MB          428,9 MB
+
+Sin cambio de geometría ni de instancias: el único costo nuevo es la propia
+textura (dos PNG de 512×512, ~0,4 MB en disco, ~1 MB en GPU con mipmaps) —
+la diferencia medida (+1 MB) es exactamente ese orden. Draw calls y
+triángulos por cámara fija, iguales dentro del margen de ruido ya conocido
+de este entorno. El pico de CPU del barrido de 360° documentado en el
+informe de Fase 6 sigue presente, con la misma magnitud — confirma otra vez
+que es previo y ajeno a este cambio puntual.
+
+------------------------------------------------------------------------------
+5. CONTINUACIÓN — FAUNA (v083): PLUMAJE Y PELAJE
+------------------------------------------------------------------------------
+A pedido explícito ("las especies que sean reconocibles fácilmente... casi
+hiperrealista"): ñandú, tero y carpincho tenían CERO textura — eran
+polígonos de color sólido plano (rheaBodyMat, teroBodyMat, capybaraMat, etc,
+todos `MeshStandardMaterial` sin `map`). Ninguna librería CC0 (Poly Haven,
+ambientCG) tiene fotos macro de plumaje o pelaje real — son bibliotecas de
+superficies arquitectónicas/de terreno, no de fauna — así que se generaron
+dos texturas propias con el mismo método que el moteado de follaje
+(gen_fauna_tex.mjs, canvas compuesto, no una foto):
+
+  feather_mottle.png — óvalos alargados con una dirección dominante (barbas
+    de pluma, con su raquis) — usado en ñandú (repetido 3×3, la parte grande
+    del cuerpo) y tero (1,4×1,4, mucho más chico).
+  fur_mottle.png — trazos cortos y desordenados (pelo grueso de carpincho),
+    repetido 4×4.
+
+Además de `map`, se agregó `bumpMap` (la MISMA imagen, sin decodificar como
+sRGB — un bumpMap es dato de altura, no color) con `bumpScale` chico
+(0,01–0,015): la superficie ahora responde a la luz según el relieve del
+plumaje/pelaje, no solo imprime un dibujo plano encima.
+
+RECONOCIBILIDAD (no textura): antes de tocar nada, se revisó el bloque de
+color de cada especie — YA estaba bien resuelto (no hizo falta cambiarlo):
+el tero ya tenía pechera negra, cara blanca, cola con banda blanca y patas
+rojas (los rasgos que lo distinguen de cualquier otra ave del campo); el
+ñandú ya tenía la silueta correcta (cuerpo ovalado, cuello largo, patas
+altas de tres dedos). El problema era enteramente de superficie, no de
+forma ni de color.
+
+LÍMITE HONESTO — "casi hiperrealista": esto es una mejora real y visible
+(capturas en comparisons/phase7/AFTER_*_closeup.jpg), pero NO llega a
+fotorrealismo. Las referencias que se pidieron seguir son renders con
+geometría esculpida de alto detalle (miles de plumas/pelos individuales,
+normal maps de tangente real, UV propio por parte del cuerpo) — eso
+requiere modelado 3D dedicado (Blender u otra herramienta), que sigue
+siendo la restricción de este proyecto desde la Fase 1 (aunque ahora sí se
+permiten texturas/assets externos, no modelos). Con la geometría procedural
+actual (icosaedros/esferas/cápsulas deformados) el techo de detalle real es
+este: un moteado con relieve que rompe el polígono liso, no un plumaje
+pluma-por-pluma. Para acercarse más habría que: (a) traer modelos con rig
+de estas tres especies desde una fuente externa (rompe la restricción de
+"sin Blender/pipeline externo" que se mantuvo desde el inicio), o (b) subir
+mucho el detalle de la geometría procedural (miles de triángulos por
+animal, más costoso en VR) y darle a cada parte su propio UV en vez de
+compartir un material entre body/neck/head. Ninguna de las dos se hizo acá
+sin que se pida explícitamente, dado el costo/cambio de alcance.
+
+------------------------------------------------------------------------------
+6. RENDIMIENTO — v083 (fauna con textura)
+------------------------------------------------------------------------------
+                        v082              v083 (fauna con textura)
+  Triángulos cargados   378.459           378.419
+  Mallas                370               369
+  VRAM estimada         428,9 MB          432,9 MB
+
++4 MB, del orden esperado (2 imágenes de 512×512 × 2 usos cada una —diffuse
+y bump— más algunos clones para ajustar la escala del repeat por especie).
+Draw calls y triángulos por cámara fija, sin cambio; costo de CPU/envío por
+cámara fija sigue en 1,7–3,8 ms. Nota de entorno: al generar una textura
+nueva recién en esta sesión, el navegador headless (SwiftShader) tardó más
+de lo habitual en descargarla/decodificarla la primera vez en un par de
+pruebas automatizadas (hubo que esperar ~40 s en vez de los ~11-20 s
+habituales para que la captura mostrara el color correcto) — no es un error
+de la escena, es una demora de arranque en ESTE contenedor de pruebas; en
+uso normal (la página ya cargada, sin las prisas de un script de captura)
+no hay ningún efecto visible.
+
+------------------------------------------------------------------------------
+7. LO QUE QUEDA PENDIENTE SI SE QUIERE SEGUIR EN ESTA LÍNEA
+------------------------------------------------------------------------------
+Pasto y junco/cortadera siguen en color plano sin foto (geometría muy chica,
+un cono de 3 caras no tiene UV que aproveche bien una textura — haría falta
+revisar/rehacer su UV primero, no es un cambio de una línea). Para fauna:
+si se quiere de verdad "casi hiperrealista", el paso siguiente es modelos
+esculpidos con rig por especie (ver límite honesto arriba) — eso es una
+decisión de alcance que hay que tomar explícitamente, no algo que se pueda
+resolver solo con más texturas sobre la geometría actual.
+
+==============================================================================
