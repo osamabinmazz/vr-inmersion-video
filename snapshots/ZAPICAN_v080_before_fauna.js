@@ -789,17 +789,6 @@ function spawnSplashRing() {
   activeSplashes.push({ mesh: ring, start: currentTime, duration: 1400 + rng() * 400 });
 }
 
-// Variante posicional (FASE 6 §9): el efecto barato de ondas cuando un
-// carpincho entra al agua. Mismo material/geometría que spawnSplashRing,
-// pero en un punto exacto y sin tocar rng() (usa faunaRng, aislado).
-function spawnSplashRingAt(x, z) {
-  const mat = new THREE.MeshBasicMaterial({ color: 0xdfeff2, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
-  const ring = new THREE.Mesh(splashRingGeo, mat);
-  ring.position.set(x, 0.19, z);
-  scene.add(ring);
-  activeSplashes.push({ mesh: ring, start: currentTime, duration: 1300 + faunaRng() * 300 });
-}
-
 // --- Vegetación nativa: árboles y arbustos (espinillo/algarrobo) ----------
 // Generados procedimentalmente (bajo poly, InstancedMesh) en vez de bajar
 // modelos de asset packs: da buen rendimiento en VR y una silueta más fiel
@@ -1364,17 +1353,10 @@ const TIER_WIND = { HERO: 1, FOREGROUND: 1, MIDGROUND_NEAR: 0.85, MIDGROUND_FAR:
 const windUniforms = {
   uWindTime: { value: 0 },
   uViewPos: { value: new THREE.Vector3(HERO_VIEW_POS.x, HERO_VIEW_POS.y, HERO_VIEW_POS.z) },
-  // FASE 6: multiplicador de ráfaga, 1.0 en calma. Un solo uniform compartido
-  // por todo el follaje con viento: cuando sube, TODA la vegetación responde
-  // junto (como una ráfaga real que pasa por el campo), no cada planta por
-  // separado. La variación entre plantas la sigue dando la fase individual
-  // (aWind.x / hash de posición), que no cambia.
-  uGustMul: { value: 1 },
 };
 const WIND_GLSL = /* glsl */ `
 uniform float uWindTime;
 uniform vec3 uViewPos;
-uniform float uGustMul;
 mat3 windRot(float ax, float az) {
   float cx = cos(ax), sx = sin(ax), cz = cos(az), sz = sin(az);
   return mat3(1.0, 0.0, 0.0, 0.0, cx, sx, 0.0, -sx, cx) * mat3(cz, sz, 0.0, -sz, cz, 0.0, 0.0, 0.0, 1.0);
@@ -1383,7 +1365,7 @@ mat3 windRot(float ax, float az) {
 function windRotGLSL(mode, w) {
   const f = (v) => v.toFixed(4);
   const angle = (ph) =>
-    `(uGustMul * (sin(uWindTime * ${f(w.f1)} + ${ph}) * ${f(w.a1)} + sin(uWindTime * ${f(w.f2)} + ${ph} * 1.4) * ${f(w.a2)}))`;
+    `(sin(uWindTime * ${f(w.f1)} + ${ph}) * ${f(w.a1)} + sin(uWindTime * ${f(w.f2)} + ${ph} * 1.4) * ${f(w.a2)})`;
   if (mode === "pivot") {
     // Malla horneada: cada vértice sabe el pivote y la fase de SU ejemplar.
     return `float wA = aWind.y * ${angle("aWind.x")}; mat3 wR = windRot(wA, wA * ${f(w.zRatio)});`;
@@ -1404,7 +1386,6 @@ function windify(material, mode, w) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uWindTime = windUniforms.uWindTime;
     shader.uniforms.uViewPos = windUniforms.uViewPos;
-    shader.uniforms.uGustMul = windUniforms.uGustMul;
     const rot = windRotGLSL(mode, w);
     const header = WIND_GLSL + (mode === "pivot" ? "attribute vec3 aPivot;\nattribute vec2 aWind;\n" : "");
     const move = mode === "pivot" ? "transformed = aPivot + wR * (transformed - aPivot);" : "transformed = wR * transformed;";
@@ -4419,101 +4400,6 @@ scene.add(farTrunks, farCanopies);
 // en la escena, no la cámara. Geometría procedimental (mismo criterio que
 // árboles/arbustos): nada de modelos externos pesados.
 
-// ===========================================================================
-// FASE 6 — fauna autóctona: comportamiento, jerarquía y sonido espacial
-// ===========================================================================
-// La fauna (ñandú, carpincho, tero, aves, mariposas) ya existía en la
-// escena; esta fase la reorganiza en tres niveles y le agrega estados en
-// vez de un solo loop repetido:
-//   HERO_FAUNA      un ejemplar por especie relevante, visible varios
-//                    segundos, con máquina de estados completa.
-//   SECONDARY_FAUNA el resto de esa misma especie: el usuario puede
-//                    descubrirlos, mismo comportamiento pero sin cámara QC
-//                    dedicada.
-//   AMBIENT_FAUNA    aves y mariposas de fondo: vuelo en loop, frecuencia
-//                    de actualización reducida con la distancia (§41).
-//
-// Rng aislado: nada de esto puede consumir `rng()` (correría la distribución
-// aprobada de vegetación). ?seed=N (DEV) varía los tiempos de estado y de
-// ráfagas sin tocar ninguna posición: es la semilla de COMPORTAMIENTO, no
-// de distribución.
-const FAUNA_SEED = (import.meta.env.DEV && new URLSearchParams(location.search).get("seed"))
-  ? parseInt(new URLSearchParams(location.search).get("seed"), 10)
-  : 90601;
-const faunaRng = mulberry32(FAUNA_SEED);
-const faunaZoneRng = mulberry32(FAUNA_SEED + 17);
-
-// Zonas prohibidas para el movimiento de fauna: el radio de cada POI
-// (personajes/marcadores) para toda especie, y el agua profunda para todo
-// lo que no sea el carpincho (que sí puede pisar la orilla/agua baja).
-function faunaCanStandOnLand(x, z) {
-  return farFromPOI(x, z, 1.4) && !insideWater(x, z, 0.4);
-}
-function faunaCanStandNearShore(x, z) {
-  return farFromPOI(x, z, 1.4);
-}
-
-// Máquina de estados genérica: cada especie define sus propios estados con
-// duración (min,max en segundos) y, opcional, una probabilidad de pasar a
-// cada estado siguiente. `pickNext` decide sin repetir el estado actual dos
-// veces seguidas si hay alternativa.
-function makeStateMachine(states, rng, startAt = 0) {
-  const names = Object.keys(states);
-  const m = { state: names[0], since: startAt, until: startAt + statesDuration(states[names[0]], rng) };
-  return m;
-}
-function statesDuration(def, rng) {
-  const [a, b] = def.duration;
-  return a + rng() * (b - a);
-}
-function stepStateMachine(m, states, t, rng) {
-  if (t < m.until) return false;
-  const def = states[m.state];
-  const options = def.next && def.next.length ? def.next : Object.keys(states).filter((n) => n !== m.state);
-  const weights = options.map((n) => (def.weight ? def.weight(n) : 1));
-  let pick = rng() * weights.reduce((a, b2) => a + b2, 0);
-  let next = options[options.length - 1];
-  for (let i = 0; i < options.length; i++) {
-    if (pick < weights[i]) { next = options[i]; break; }
-    pick -= weights[i];
-  }
-  m.state = next;
-  m.since = t;
-  m.until = t + statesDuration(states[next], rng);
-  return true; // hubo transición: el llamador puede fijar un nuevo objetivo de movimiento
-}
-
-// --- Ráfagas de viento (§25-28) --------------------------------------------
-// Eventos suaves y espaciados, no una tormenta: incremento progresivo y
-// vuelta igual de progresiva (perfil en seno, nunca un salto). Se precalcula
-// un calendario de eventos irregulares (no periódico a simple vista) sobre
-// un ciclo largo, con la semilla de comportamiento — reproducible con
-// ?seed=, no afecta ninguna posición.
-const GUST_CYCLE = 600; // s: el calendario se repite cada 10 min, bastante
-// largo para que no se note en una sesión corta
-const gustSchedule = [];
-{
-  let tcur = 20 + faunaRng() * 40;
-  while (tcur < GUST_CYCLE) {
-    const dur = 6 + faunaRng() * 8;
-    gustSchedule.push({ start: tcur, dur, amp: 0.15 + faunaRng() * 0.2 });
-    tcur += dur + 45 + faunaRng() * 95; // 45-140 s de calma entre ráfagas
-  }
-}
-function gustMultiplierAt(t) {
-  const tc = t % GUST_CYCLE;
-  let mul = 1;
-  for (const g of gustSchedule) {
-    if (tc >= g.start && tc < g.start + g.dur) {
-      const p = (tc - g.start) / g.dur;
-      mul = 1 + g.amp * Math.sin(Math.PI * p); // sube y baja suave, nunca un salto
-      break;
-    }
-  }
-  return mul;
-}
-
-
 // Carpinchos (Hydrochoerus hydrochaeris): cuerpo achatado, orejas
 // pequeñas, patas cortas — habitan justo en el borde de cuerpos de agua
 // como esta laguna, así que van ahí.
@@ -4570,50 +4456,15 @@ function makeCapybara() {
   return group;
 }
 
-// SECONDARY_FAUNA (§8-9). Bajado de 3 a 2 -- "2 adultos", el número de
-// referencia del brief; menos individuos, mejor comportamiento. Se
-// mantiene junto al agua (waterOutlinePoint, igual que antes de esta
-// fase), pero ahora con una máquina de estados: descansan, comen, miran,
-// caminan por la orilla y a veces entran al agua (con onda y chapoteo).
-// El radio de merodeo es angular, a lo largo de la propia curva de la
-// orilla (waterOutlinePoint): así nunca terminan sobre tierra seca lejos
-// del agua ni cruzando el centro de la laguna.
-const CAPYBARA_STATES = {
-  REST: { duration: [5, 11], next: ["EAT", "LOOK", "SLOW_WALK"] },
-  EAT: { duration: [4, 8], next: ["REST", "LOOK"] },
-  LOOK: { duration: [1.5, 3] },
-  SLOW_WALK: { duration: [3, 6], next: ["REST", "EAT", "ENTER_WATER"] },
-  ENTER_WATER: { duration: [3, 5], next: ["STAND_NEAR_WATER"] },
-  STAND_NEAR_WATER: { duration: [4, 9], next: ["SLOW_WALK", "REST"] },
-};
-// Radio de la orilla (radiusScale de waterOutlinePoint) que corresponde a
-// cada estado: >1 es tierra/barro, ~1 es la línea de agua, <1 ya moja.
-const CAPYBARA_SCALE_BY_STATE = {
-  REST: [1.1, 1.24], EAT: [1.08, 1.2], LOOK: [1.1, 1.24],
-  SLOW_WALK: [1.05, 1.22], ENTER_WATER: [0.9, 0.98], STAND_NEAR_WATER: [0.98, 1.04],
-};
-const CAPYBARA_COUNT = 2;
+const CAPYBARA_COUNT = 3;
 const capybaras = [];
 for (let i = 0; i < CAPYBARA_COUNT; i++) {
-  const homeAngle = rng() * Math.PI * 2;
-  const homeScale = 1.12 + rng() * 0.14; // sobre la orilla de barro
-  const [x, z] = waterOutlinePoint(homeAngle, homeScale);
+  const angle = rng() * Math.PI * 2;
+  const [x, z] = waterOutlinePoint(angle, 1.12 + rng() * 0.14); // sobre la orilla de barro
   const capy = makeCapybara();
-  capy.position.set(x, groundY(x, z), z);
+  capy.position.set(x, 0, z);
   capy.rotation.y = Math.atan2(WATER_CENTER[0] - x, WATER_CENTER[1] - z) + Math.PI / 2; // mirando hacia el agua
-  const sm = makeStateMachine(CAPYBARA_STATES, faunaRng, -faunaRng() * 6);
-  capy.userData = {
-    tier: i === 0 ? "HERO" : "SECONDARY",
-    bobOffset: faunaRng() * Math.PI * 2,
-    homeAngle,
-    angle: homeAngle,
-    scaleR: homeScale,
-    fromAngle: homeAngle, fromScale: homeScale,
-    toAngle: homeAngle, toScale: homeScale,
-    walkStart: 0, walkDur: 1, // sin esto, antes de la primera transición p = NaN (0/0)
-    splashed: false,
-    sm,
-  };
+  capy.userData.bobOffset = rng() * Math.PI * 2;
   scene.add(capy);
   capybaras.push(capy);
 }
@@ -4804,43 +4655,17 @@ function makeRhea() {
   return group;
 }
 
-// HERO_FAUNA (§6-7): el ñandú principal, con máquina de estados completa
-// (IDLE → LOOK → WALK → PECK → IDLE, duraciones variables, sin repetir el
-// mismo ciclo). Bajado de 3 a "1 individuo principal + opcionalmente 1
-// segundo más alejado" (§6): RHEA_COUNT=2.
-const RHEA_STATES = {
-  IDLE: { duration: [3, 7], next: ["LOOK_LEFT", "LOOK_RIGHT", "PECK_GROUND", "SHORT_WALK", "HEAD_UP"] },
-  LOOK_LEFT: { duration: [1.2, 2.5], next: ["IDLE", "PECK_GROUND"] },
-  LOOK_RIGHT: { duration: [1.2, 2.5], next: ["IDLE", "PECK_GROUND"] },
-  PECK_GROUND: { duration: [2, 5], next: ["IDLE", "HEAD_UP", "PECK_GROUND"], weight: (n) => (n === "PECK_GROUND" ? 1.4 : 1) },
-  HEAD_UP: { duration: [1.5, 3], next: ["IDLE", "LOOK_LEFT", "LOOK_RIGHT"] },
-  SHORT_WALK: { duration: [2, 4], next: ["STOP"] },
-  STOP: { duration: [1, 2.5], next: ["IDLE", "PECK_GROUND"] },
-};
-const RHEA_COUNT = 2;
+const RHEA_COUNT = 3;
 const rheas = [];
 // lejos del agua y de los marcadores: pastorean en la llanura abierta
 const rheaPositions = scatterPositions(RHEA_COUNT, 6, 12, 3.0);
-rheaPositions.forEach(([x, z], i) => {
+rheaPositions.forEach(([x, z]) => {
   const rhea = makeRhea();
-  const y = groundY(x, z);
-  rhea.position.set(x, y, z);
-  const heading = rng() * Math.PI * 2;
-  rhea.rotation.y = heading;
-  Object.assign(rhea.userData, {
-    tier: i === 0 ? "HERO" : "SECONDARY",
-    grazePhase: faunaRng() * Math.PI * 2,
-    stepPhase: faunaRng() * Math.PI * 2,
-    home: [x, z],
-    // Radio de merodeo (§21): mayor en la llanura abierta que el del
-    // carpincho, atado a la orilla. El hero, algo más -- es el que más
-    // tiempo va a estar en cuadro.
-    roam: i === 0 ? 3.2 : 2.2,
-    heading,
-    fromX: x, fromZ: z, toX: x, toZ: z, walkStart: 0,
-    lookYaw: 0,
-    sm: makeStateMachine(RHEA_STATES, faunaRng, -faunaRng() * 6),
-  });
+  rhea.position.set(x, 0, z);
+  rhea.rotation.y = rng() * Math.PI * 2;
+  rhea.userData.grazePhase = rng() * Math.PI * 2;
+  rhea.userData.grazeSpeed = 0.25 + rng() * 0.2;
+  rhea.userData.stepPhase = rng() * Math.PI * 2;
   scene.add(rhea);
   rheas.push(rhea);
 });
@@ -4914,34 +4739,15 @@ function makeTero() {
   return group;
 }
 
-// SECONDARY/AMBIENT_FAUNA (§10): "2-4 individuos como máximo inicialmente".
-// Bajado de 5 a 3. Alternan picotear/mirar/quietos y a veces dan unos
-// pasos cortos -- no todos con la misma animación (§10).
-const TERO_STATES = {
-  PECK: { duration: [3, 6], next: ["IDLE", "LOOK", "SHORT_WALK"] },
-  LOOK: { duration: [1.5, 3], next: ["PECK", "IDLE"] },
-  IDLE: { duration: [2, 5], next: ["PECK", "LOOK", "SHORT_WALK"] },
-  SHORT_WALK: { duration: [1, 2], next: ["IDLE", "PECK"] },
-};
-const TERO_COUNT = 3;
+const TERO_COUNT = 5;
 const teros = [];
 const teroPositions = scatterPositions(TERO_COUNT, 3.5, 11, 1.6);
-teroPositions.forEach(([x, z], i) => {
+teroPositions.forEach(([x, z]) => {
   const tero = makeTero();
-  const y = groundY(x, z);
-  tero.position.set(x, y, z);
-  const heading = rng() * Math.PI * 2;
-  tero.rotation.y = heading;
-  Object.assign(tero.userData, {
-    tier: i === 0 ? "SECONDARY" : "AMBIENT",
-    peckPhase: faunaRng() * Math.PI * 2,
-    peckSpeed: 0.5 + faunaRng() * 0.4,
-    home: [x, z],
-    roam: 1.0,
-    heading,
-    fromX: x, fromZ: z, toX: x, toZ: z, walkStart: 0,
-    sm: makeStateMachine(TERO_STATES, faunaRng, -faunaRng() * 5),
-  });
+  tero.position.set(x, 0, z);
+  tero.rotation.y = rng() * Math.PI * 2;
+  tero.userData.peckPhase = rng() * Math.PI * 2;
+  tero.userData.peckSpeed = 0.5 + rng() * 0.4;
   scene.add(tero);
   teros.push(tero);
 });
@@ -4986,12 +4792,7 @@ function startWind(ctx) {
   noise.start();
 }
 
-// FASE 6 (§29-35, sonido espacial): las tres llamadas de fauna ya no van
-// derecho a ctx.destination -- reciben un `dest` (un PannerNode ubicado en
-// la posición real del animal, o ctx.destination si no corresponde
-// posicionar). Un ave a la izquierda del usuario se escucha desde la
-// izquierda; una llamada lejana, más lejana. La síntesis en sí no cambia.
-function playBirdChirp(ctx, dest = ctx.destination) {
+function playBirdChirp(ctx) {
   const now = ctx.currentTime;
   const notes = 2 + Math.floor(Math.random() * 3);
   for (let i = 0; i < notes; i++) {
@@ -5008,13 +4809,13 @@ function playBirdChirp(ctx, dest = ctx.destination) {
     g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.08);
 
     osc.connect(g);
-    g.connect(dest);
+    g.connect(ctx.destination);
     osc.start(t0);
     osc.stop(t0 + 0.1);
   }
 }
 
-function playCapybaraGrunt(ctx, dest = ctx.destination) {
+function playCapybaraGrunt(ctx) {
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   osc.type = "sawtooth";
@@ -5032,7 +4833,7 @@ function playCapybaraGrunt(ctx, dest = ctx.destination) {
 
   osc.connect(filter);
   filter.connect(g);
-  g.connect(dest);
+  g.connect(ctx.destination);
   osc.start(now);
   osc.stop(now + 0.45);
 }
@@ -5040,7 +4841,7 @@ function playCapybaraGrunt(ctx, dest = ctx.destination) {
 // Grito del tero: la alarma más reconocible del campo uruguayo. Son sílabas
 // cortas, muy agudas y metálicas, repetidas en ráfaga ("tero-tero-tero"),
 // cada una con un golpe de ataque seco y una caída rápida de tono.
-function playTeroCall(ctx, dest = ctx.destination) {
+function playTeroCall(ctx) {
   const now = ctx.currentTime;
   const syllables = 3 + Math.floor(Math.random() * 3);
   for (let i = 0; i < syllables; i++) {
@@ -5064,55 +4865,21 @@ function playTeroCall(ctx, dest = ctx.destination) {
 
     osc.connect(filter);
     filter.connect(g);
-    g.connect(dest);
+    g.connect(ctx.destination);
     osc.start(t0);
     osc.stop(t0 + 0.15);
   }
 }
 
-// Panner de un solo uso: se crea, suena una vez y tres.js/WebAudio lo
-// recolecta cuando el nodo de origen termina — no hace falta desconectarlo
-// a mano.
-function makeOneShotPanner(ctx, x, y, z, maxDistance = 22) {
-  const panner = ctx.createPanner();
-  panner.panningModel = "HRTF";
-  panner.distanceModel = "inverse";
-  panner.refDistance = 1.5;
-  panner.maxDistance = maxDistance;
-  panner.rolloffFactor = 1.1;
-  if (panner.positionX) {
-    panner.positionX.value = x;
-    panner.positionY.value = y;
-    panner.positionZ.value = z;
-  } else {
-    panner.setPosition(x, y, z);
-  }
-  panner.connect(ctx.destination);
-  return panner;
-}
-
-// El planificador elige un EJEMPLAR REAL de la escena (no solo un tipo de
-// sonido) y llama desde su posición actual: si el usuario mira hacia otro
-// lado, sigue sabiendo de dónde viene. §32-34: nunca todos los sonidos al
-// mismo tiempo -- silencio entre llamadas más largo y variable que antes.
 function scheduleWildlifeSounds(ctx) {
   const tick = () => {
-    const pool = [];
-    for (const b of birds) pool.push(["bird", b]);
-    for (const t of teros) pool.push(["tero", t]);
-    for (const c of capybaras) pool.push(["capy", c]);
-    if (pool.length) {
-      const [kind, obj] = pool[Math.floor(Math.random() * pool.length)];
-      const p = obj.position;
-      const dest = makeOneShotPanner(ctx, p.x, p.y + 0.15, p.z);
-      if (kind === "bird") playBirdChirp(ctx, dest);
-      else if (kind === "tero") playTeroCall(ctx, dest);
-      else playCapybaraGrunt(ctx, dest);
-    }
-    // 3-10 s de silencio entre llamadas: ocasional, no un metrónomo.
-    setTimeout(tick, 3000 + Math.random() * 7000);
+    const r = Math.random();
+    if (r < 0.45) playBirdChirp(ctx);
+    else if (r < 0.8) playTeroCall(ctx);
+    else playCapybaraGrunt(ctx);
+    setTimeout(tick, 1800 + Math.random() * 3500);
   };
-  setTimeout(tick, 1500);
+  setTimeout(tick, 1000);
 }
 
 // Sonido de agua de la laguna: posicional (PannerNode) en las coordenadas
@@ -5271,25 +5038,6 @@ const QC_CAMERAS = {
   QC_ATMOS_DEPTH: { pos: [-1.5, 3.4, 12.5], look: [-2, 1.2, -30] },
   // Relación cielo/horizonte: mitad superior cielo, línea de monte abajo.
   QC_SKY_HORIZON: { pos: [0, 1.6, 4], look: [2, 5, -40] },
-  // FASE 6 — fauna. Posiciones fijas: como QC_TREE_CLOSE en Fase 2, apuntan
-  // a coordenadas conocidas (rango de scatterPositions / waterOutlinePoint),
-  // no calculadas por script; si el reparto de fauna cambia, se ajustan.
-  // Tercera iteración: las dos anteriores (desde -X) quedaban con una
-  // cortadera/helecho pegado al ejemplar tapando el cuerpo. Desde +X, más
-  // alta y algo más lejos, el mismo grupo de cortadera/roca queda detrás
-  // del ñandú en vez de delante. Igual de válida si la semilla de fauna
-  // cambia, porque parte de la posición real del ejemplar.
-  QC_RHEA: { pos: [rheas[0].position.x + 4, 3.3, rheas[0].position.z + 2.5], look: [rheas[0].position.x, 0.7, rheas[0].position.z] },
-  QC_CAPYBARA: { pos: [capybaras[0].position.x - 1.4, 2.4, capybaras[0].position.z + 4.2], look: [capybaras[0].position.x, 0.1, capybaras[0].position.z] },
-  QC_BIRDS: { pos: [0, 1.6, 4], look: [birds[0].userData.center[0], birds[0].userData.height, birds[0].userData.center[1]] },
-  QC_FAUNA_WIDE: { pos: [-4, 2.6, 10], look: [3, 0.6, -4] },
-  QC_FAUNA_WATER: { pos: [2.5, 1.6, 6.5], look: [WATER_CENTER[0], 0.3, WATER_CENTER[1]] },
-  // Encuadrar al ñandú hero Y a un tero a la vez no dio un ángulo limpio:
-  // están a ~15 m uno del otro y la línea entre ambos pasa cerca del área
-  // de los personajes (marcadores de texto), que terminaban en cuadro. Se
-  // usa en cambio un plano más cercano y bajo del ñandú, mismo cuadrante
-  // que QC_RHEA, para juzgar la zancada/piernas de la caminata (§10, §44).
-  QC_ANIMATION: { pos: [rheas[0].position.x + 3, 1.7, rheas[0].position.z + 1.8], look: [rheas[0].position.x, 0.5, rheas[0].position.z] },
 };
 
 if (import.meta.env.DEV) {
@@ -5331,22 +5079,6 @@ if (import.meta.env.DEV) {
     gramineas_dibujadas: grassTufts.count,
     hojas_copa_monte_dibujadas: canopyLeaves.count,
     arboles_horizonte_y_fondo: farBake.length,
-    // FASE 6
-    nandus: rheas.length,
-    carpinchos: capybaras.length,
-    teros: teros.length,
-    aves_fondo: birds.length,
-    mariposas: butterflies.length,
-  });
-  // FASE 6: jerarquía, estado actual y contacto con el suelo de cada
-  // ejemplar, para el informe y las pruebas automáticas (sin esto habría
-  // que inferir el estado interno leyendo rotaciones en una captura).
-  window.__fauna = () => ({
-    seed: FAUNA_SEED,
-    gust: gustMultiplierAt(currentTime * 0.001),
-    nandus: rheas.map((r) => ({ tier: r.userData.tier, estado: r.userData.sm.state, pos: r.position.toArray().map((v) => +v.toFixed(2)), sueloY: +groundY(r.position.x, r.position.z).toFixed(3) })),
-    carpinchos: capybaras.map((c) => ({ tier: c.userData.tier, estado: c.userData.sm.state, pos: c.position.toArray().map((v) => +v.toFixed(2)) })),
-    teros: teros.map((tr) => ({ tier: tr.userData.tier, estado: tr.userData.sm.state, pos: tr.position.toArray().map((v) => +v.toFixed(2)) })),
   });
   // FASE 4: zonificación visual de cada sistema (para MIDGROUND_AUDIT).
   window.__tiers = () => ({
@@ -5538,52 +5270,11 @@ function perfTick(time) {
 // primera vez que su material entra en cuadro, y eso congela ese frame
 // (medido: 30–80 ms al girar hacia 15° y 195°, ya en v060). En VR es un tirón
 // visible la primera vez que se mira hacia ahí. Se compilan todos al inicio.
-// FASE 6: renderer.compile() solo linkea el programa de shader; NO sube los
-// buffers de geometría/textura a la GPU (eso three lo deja para el primer
-// render() real de cada objeto). Con la fauna repartida por fuera del
-// frustum inicial (§21: home+roam, sin "efecto zoo"), ese primer render()
-// real llegaba recién al girar la cabeza hacia el ñandú o el tero — medido:
-// hasta 91 s de bloqueo en un único frame. Se reemplaza compile() por
-// render() real barriendo 360° en yaw desde el mismo punto de vista: al ser
-// todo síncrono y sin ceder el hilo, el navegador no llega a pintar ninguno
-// de estos frames intermedios en pantalla. Se deja la cámara mirando a -Z
-// (igual que antes) y con un último render() al terminar.
-for (let yaw = 0; yaw < Math.PI * 2; yaw += Math.PI / 6) {
-  camera.lookAt(
-    HERO_VIEW_POS.x + Math.sin(yaw) * -10,
-    HERO_VIEW_POS.y - 1.2,
-    HERO_VIEW_POS.z + Math.cos(yaw) * -10
-  );
-  renderer.render(scene, camera);
-}
-// FASE 6 (medido con el barrido anterior): el anillo de chapoteo
-// (spawnSplashRingAt, §9) recién existe en la escena cuando un carpincho
-// entra al agua por primera vez — nada de lo de arriba lo alcanza a
-// precompilar porque en el momento del barrido ese objeto todavía no fue
-// creado. Se fuerza uno de mentira, mirando al agua, y se descarta antes de
-// arrancar el loop real.
-{
-  const warmSplash = new THREE.Mesh(
-    splashRingGeo,
-    new THREE.MeshBasicMaterial({ color: 0xdfeff2, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
-  );
-  warmSplash.position.set(WATER_CENTER[0], 0.19, WATER_CENTER[1]);
-  scene.add(warmSplash);
-  camera.lookAt(WATER_CENTER[0], 0.3, WATER_CENTER[1]);
-  renderer.render(scene, camera);
-  scene.remove(warmSplash);
-  warmSplash.material.dispose();
-}
-camera.rotation.set(0, 0, 0);
-renderer.render(scene, camera);
+renderer.compile(scene, camera);
 
 renderer.setAnimationLoop((time) => {
   currentTime = time;
   perfTick(time);
-  // FASE 6 (§25-28): ráfaga de viento, calculada una vez por frame y usada
-  // tanto por el follaje (uGustMul, más abajo) como por el agua (acá): una
-  // ráfaga real también riza la superficie de una laguna, no solo el pasto.
-  const gust = gustMultiplierAt(time * 0.001);
 
   for (const ring of poiMarkers) {
     ring.material.opacity = 0.5 + 0.3 * Math.sin(time * 0.002 + ring.position.x);
@@ -5591,10 +5282,10 @@ renderer.setAnimationLoop((time) => {
   // Movimiento muy lento y cruzado: las dos capas de onda se desplazan en
   // direcciones distintas, así que el patrón nunca se repite a ojo. Una
   // sola capa, por lento que vaya, se lee como una textura que resbala.
-  waterNormalTex.offset.x = time * 0.0000125 * gust;
-  waterNormalTex.offset.y = time * 0.0000075 * gust;
-  waterNormalTex2.offset.x = -time * 0.0000068 * gust;
-  waterNormalTex2.offset.y = time * 0.0000104 * gust;
+  waterNormalTex.offset.x = time * 0.0000125;
+  waterNormalTex.offset.y = time * 0.0000075;
+  waterNormalTex2.offset.x = -time * 0.0000068;
+  waterNormalTex2.offset.y = time * 0.0000104;
 
   // Anillos de chapoteo: se expanden y desvanecen, se descartan al terminar.
   for (let i = activeSplashes.length - 1; i >= 0; i--) {
@@ -5636,16 +5327,8 @@ renderer.setAnimationLoop((time) => {
   }
 
   const t = time * 0.001;
-
-  // FASE 6 (§41-42, animation LOD): AMBIENT_FAUNA lejos del punto de vista
-  // se actualiza menos seguido. El costo de saltarse un frame es un vuelo
-  // apenas menos fluido a 8+ m, imperceptible; el ahorro es real con 10 aves.
   for (const bird of birds) {
-    const ud = bird.userData;
-    if (ud.lodSkip === undefined) ud.lodSkip = heroDist(ud.center[0], ud.center[1]) > 10 ? 3 : 1;
-    ud.lodTick = (ud.lodTick || 0) + 1;
-    if (ud.lodTick % ud.lodSkip !== 0) continue;
-    const { radius, center, height, speed, phase, flapSpeed } = ud;
+    const { radius, center, height, speed, phase, flapSpeed } = bird.userData;
     const angle = t * speed + phase;
     bird.position.set(
       center[0] + Math.cos(angle) * radius,
@@ -5654,130 +5337,29 @@ renderer.setAnimationLoop((time) => {
     );
     bird.rotation.y = -angle + Math.PI / 2; // mirando en la dirección de vuelo
     const flap = Math.sin(t * flapSpeed + phase) * 0.6;
-    for (const wing of ud.wings) wing.rotation.x = flap;
+    for (const wing of bird.userData.wings) wing.rotation.x = flap;
   }
 
-  // --- Carpincho: SECONDARY_FAUNA con máquina de estados (§8-9) -----------
-  // Se mueve sobre la propia curva de la orilla (ángulo/escala de
-  // waterOutlinePoint), nunca cruza a tierra seca ni al centro del agua.
   for (const capy of capybaras) {
-    const ud = capy.userData;
-    const transitioned = stepStateMachine(ud.sm, CAPYBARA_STATES, t, faunaRng);
-    if (transitioned) {
-      ud.fromAngle = ud.angle;
-      ud.fromScale = ud.scaleR;
-      const [lo, hi] = CAPYBARA_SCALE_BY_STATE[ud.sm.state];
-      ud.toScale = lo + faunaRng() * (hi - lo);
-      // Solo camina de verdad en SLOW_WALK/ENTER_WATER; en el resto se
-      // "asienta" en el nuevo radio sin desplazarse a lo largo de la orilla.
-      ud.toAngle = ud.sm.state === "SLOW_WALK" || ud.sm.state === "ENTER_WATER"
-        ? ud.homeAngle + (faunaRng() - 0.5) * 0.9
-        : ud.fromAngle;
-      ud.walkStart = t;
-      ud.walkDur = Math.min(ud.sm.until - ud.sm.since, 2.4); // se acomoda rápido, no desliza toda la duración del estado
-      if (ud.sm.state === "ENTER_WATER" && !ud.splashed) {
-        const [wx, wz] = waterOutlinePoint(ud.toAngle, (lo + hi) / 2);
-        spawnSplashRingAt(wx, wz);
-        if (audioCtx && capy === capybaras[0]) playCapybaraGrunt(audioCtx, makeOneShotPanner(audioCtx, wx, 0.15, wz));
-        ud.splashed = true;
-      }
-      if (ud.sm.state !== "ENTER_WATER") ud.splashed = false;
-    }
-    const p = Math.min(1, (t - ud.walkStart) / Math.max(0.001, ud.walkDur));
-    ud.angle = THREE.MathUtils.lerp(ud.fromAngle, ud.toAngle, p);
-    ud.scaleR = THREE.MathUtils.lerp(ud.fromScale, ud.toScale, p);
-    const [cx, cz] = waterOutlinePoint(ud.angle, ud.scaleR);
-    // Contacto con el suelo (§18): en la orilla sigue groundY; entrando al
-    // agua se hunde hasta la mitad del cuerpo (aprox. su radio, 0.22 m).
-    const wet = ud.sm.state === "ENTER_WATER" || ud.sm.state === "STAND_NEAR_WATER";
-    const landY = groundY(cx, cz);
-    const cy = wet ? THREE.MathUtils.lerp(landY, WATER_SURFACE_Y - 0.11, p) : landY;
-    capy.position.set(cx, cy + 0.01 * Math.sin(t * 0.8 + ud.bobOffset), cz);
-    // Siempre mirando hacia el agua: es lo que tiene sentido en cualquier
-    // estado (comiendo, descansando o entrando) para un animal semiacuático.
-    capy.rotation.y = Math.atan2(WATER_CENTER[0] - cx, WATER_CENTER[1] - cz) + Math.PI / 2;
+    capy.position.y = 0.01 + 0.01 * Math.sin(t * 0.8 + capy.userData.bobOffset);
   }
 
-  // --- Ñandú: HERO_FAUNA con máquina de estados completa (§6-7) -----------
+  // Ñandú pastoreando: baja el cuello al pasto, lo sube a vigilar. El ciclo
+  // pasa más tiempo abajo que arriba, como el animal real.
   for (const rhea of rheas) {
-    const ud = rhea.userData;
-    const transitioned = stepStateMachine(ud.sm, RHEA_STATES, t, faunaRng);
-    if (transitioned && ud.sm.state === "SHORT_WALK") {
-      ud.fromX = rhea.position.x;
-      ud.fromZ = rhea.position.z;
-      // Punto dentro del radio de merodeo (§21), lejos de personajes y agua.
-      let tx = ud.home[0], tz = ud.home[1];
-      for (let tries = 0; tries < 8; tries++) {
-        const a = faunaRng() * Math.PI * 2;
-        const r = faunaRng() * ud.roam;
-        const cx = ud.home[0] + Math.cos(a) * r, cz = ud.home[1] + Math.sin(a) * r;
-        if (faunaCanStandOnLand(cx, cz)) { tx = cx; tz = cz; break; }
-      }
-      ud.toX = tx;
-      ud.toZ = tz;
-      ud.walkStart = t;
-      const dx = tx - ud.fromX, dz = tz - ud.fromZ;
-      if (Math.hypot(dx, dz) > 0.05) ud.heading = Math.atan2(dx, dz);
-    }
-    const since = t - ud.sm.since;
-    const total = Math.max(0.001, ud.sm.until - ud.sm.since);
-    const ease = Math.min(1, since / 0.4) * Math.min(1, (total - since) / 0.4); // sube, sostiene, baja
-    let neckTarget = 0.32; // reposo: ni erguido del todo ni pastando
-    if (ud.sm.state === "PECK_GROUND") neckTarget = 0.32 + Math.max(0, ease) * (1.05 + 0.35 * Math.max(0, Math.sin(t * 2.3 + ud.grazePhase)));
-    else if (ud.sm.state === "HEAD_UP") neckTarget = 0.32 * (1 - Math.max(0, ease));
-    rhea.userData.neck.rotation.z = neckTarget;
-
-    let yaw = ud.heading;
-    if (ud.sm.state === "LOOK_LEFT") yaw += Math.max(0, ease) * 0.55;
-    else if (ud.sm.state === "LOOK_RIGHT") yaw -= Math.max(0, ease) * 0.55;
-
-    if (ud.sm.state === "SHORT_WALK") {
-      const p = Math.min(1, (t - ud.walkStart) / total);
-      const x = THREE.MathUtils.lerp(ud.fromX, ud.toX, p);
-      const z = THREE.MathUtils.lerp(ud.fromZ, ud.toZ, p);
-      rhea.position.set(x, groundY(x, z), z);
-      const swing = p < 1 ? 1 : 0;
-      rhea.userData.legs.forEach((leg, i) => { leg.rotation.x = swing * Math.sin(t * 6 + i * Math.PI) * 0.3; });
-    } else {
-      rhea.position.y = groundY(rhea.position.x, rhea.position.z) + 0.01 * Math.sin(t * 1.3 + ud.stepPhase);
-      for (const leg of rhea.userData.legs) leg.rotation.x = 0;
-    }
-    rhea.rotation.y = yaw;
-    rhea.rotation.z = 0.02 * Math.sin(t * 0.9 + ud.stepPhase); // peso que cambia de pata, sutil
+    const { neck, grazePhase, grazeSpeed, stepPhase } = rhea.userData;
+    const cycle = Math.sin(t * grazeSpeed + grazePhase);
+    neck.rotation.z = 0.75 + 0.75 * Math.max(0, cycle); // 0 = erguido, ~1.5 rad = cabeza al suelo
+    rhea.position.y = 0.012 * Math.sin(t * 1.4 + stepPhase);
+    // peso que cambia de pata, sutil
+    rhea.rotation.z = 0.02 * Math.sin(t * 0.9 + stepPhase);
   }
 
-  // --- Tero: SECONDARY/AMBIENT_FAUNA (§10) --------------------------------
-  // No todos comparten animación: uno pecks/looks/short-walks con su propia
-  // fase; el resto (AMBIENT) hace el mismo repertorio pero más espaciado.
+  // Tero picoteando el pasto corto, con pausas de alerta
   for (const tero of teros) {
-    const ud = tero.userData;
-    const transitioned = stepStateMachine(ud.sm, TERO_STATES, t, faunaRng);
-    if (transitioned && ud.sm.state === "SHORT_WALK") {
-      ud.fromX = tero.position.x;
-      ud.fromZ = tero.position.z;
-      const a = faunaRng() * Math.PI * 2;
-      const r = faunaRng() * ud.roam;
-      const cx = ud.home[0] + Math.cos(a) * r, cz = ud.home[1] + Math.sin(a) * r;
-      ud.toX = faunaCanStandOnLand(cx, cz) ? cx : ud.fromX;
-      ud.toZ = faunaCanStandOnLand(cx, cz) ? cz : ud.fromZ;
-      ud.walkStart = t;
-      const dx = ud.toX - ud.fromX, dz = ud.toZ - ud.fromZ;
-      if (Math.hypot(dx, dz) > 0.03) ud.heading = Math.atan2(dx, dz);
-    }
-    if (ud.sm.state === "SHORT_WALK") {
-      const total = Math.max(0.001, ud.sm.until - ud.sm.since);
-      const p = Math.min(1, (t - ud.walkStart) / total);
-      const x = THREE.MathUtils.lerp(ud.fromX, ud.toX, p);
-      const z = THREE.MathUtils.lerp(ud.fromZ, ud.toZ, p);
-      tero.position.set(x, groundY(x, z), z);
-      tero.rotation.y = ud.heading;
-    } else {
-      tero.position.y = groundY(tero.position.x, tero.position.z);
-      if (ud.sm.state === "LOOK") tero.rotation.y = ud.heading + 0.35 * Math.sin(t * 0.7 + ud.peckPhase);
-      else tero.rotation.y = ud.heading;
-    }
-    const c = Math.sin(t * ud.peckSpeed + ud.peckPhase);
-    tero.rotation.z = ud.sm.state === "PECK" ? Math.max(0, c - 0.45) * 0.9 : 0;
+    const { peckPhase, peckSpeed } = tero.userData;
+    const c = Math.sin(t * peckSpeed + peckPhase);
+    tero.rotation.z = Math.max(0, c - 0.45) * 0.9; // solo picotea en el pico del ciclo
   }
 
   for (const bfly of butterflies) {
@@ -5800,7 +5382,6 @@ renderer.setAnimationLoop((time) => {
   // FASE 4: pasto, cuerpos de arbusto, copas del monte y sus hojas se mecen
   // en el vertex shader (windify); acá solo avanza el reloj del viento.
   windUniforms.uWindTime.value = t;
-  windUniforms.uGustMul.value = gust;
   if (LOOK_MODE === "PRESENTATION") cloudTex.offset.x = t * 0.0006; // FASE 5: nubes que derivan
 
   // Las hojas individuales tienen su propio balanceo (más rápido y liviano

@@ -1,0 +1,245 @@
+ZAPICÁN — FASE 6 · FAUNA AUTÓCTONA + VIDA AMBIENTAL
+==============================================================================
+Reporte final. Snapshot de trabajo: ZAPICAN_v081_native_fauna (antes:
+ZAPICAN_v080_before_fauna = v071_lighting_atmosphere, sin cambios). Todo
+100% procedural (Three.js/WebXR), sin Blender ni pipeline de assets externo,
+igual que las fases anteriores.
+
+------------------------------------------------------------------------------
+1. ESPECIES Y CANTIDAD DE EJEMPLARES
+------------------------------------------------------------------------------
+Primer pase (piloto, según §43 del brief), sin agregar el resto de lo
+planeado hasta validar calidad/naturalidad/rendimiento:
+
+  Ñandú (Rhea americana)        2  (1 HERO + 1 SECONDARY, antes 3)
+  Carpincho (Hydrochoerus)      2  (1 HERO + 1 SECONDARY, antes 3)
+  Tero (Vanellus chilensis)     3  (1 SECONDARY + 2 AMBIENT, antes 5)
+  Aves de fondo (silueta simple) 10  (ya existían, sin cambios; ver §41 LOD)
+  Mariposas (ambiente)           16  (ya existían, sin cambios)
+
+Venado de campo, zorro gris, mulita y yacaré: NO se agregaron. No surgió una
+razón ecológica/espacial clara para incluirlos en este primer pase y el
+brief pide explícitamente no sumarlos "a menos que haya una razón clara" —
+no la hubo. Quedan disponibles para una fase futura si se pide.
+
+------------------------------------------------------------------------------
+2. JERARQUÍA Y DISTRIBUCIÓN (§4-5, §21-22)
+------------------------------------------------------------------------------
+  HERO_FAUNA:      1 ñandú, 1 carpincho — visibles varios segundos, con
+                   máquina de estados completa.
+  SECONDARY_FAUNA: 1 ñandú, 1 carpincho, 1 tero — descubribles, radio de
+                   merodeo más chico.
+  AMBIENT_FAUNA:   2 teros, aves de fondo, mariposas.
+
+Cada animal tiene HOME_POSITION + ROAM_RADIUS (ñandú: 3.2 m hero / 2.2 m
+secondary; carpincho: sobre el arco de la orilla, waterOutlinePoint; tero:
+1.0 m) y no cruza a zonas prohibidas: personajes (POI_KEEP_OUT, ≥5 m en la
+práctica), agua profunda (solo el carpincho entra, y solo hasta el borde),
+límites del mapa. Verificado con las posiciones reales de window.__fauna():
+la distancia mínima de cualquier ejemplar a un personaje fue ~5,0 m en todas
+las corridas.
+
+Distribución: nada de "un animal cada tantos metros". Ñandú SECONDARY a
+~17 m del HERO, carpinchos junto a la orilla en dos puntos separados, teros
+en tres puntos sueltos (uno cerca del agua, dos en el pastizal) — clusters y
+espacios vacíos, no una grilla.
+
+------------------------------------------------------------------------------
+3. COMPORTAMIENTO (§6-11, §20)
+------------------------------------------------------------------------------
+Un único patrón reutilizado para las tres especies: máquina de estados con
+pesos y duración variable por estado (makeStateMachine/stepStateMachine),
+con una curva de entrada/sostén/salida de 0,4 s para que nada cambie de
+golpe.
+
+  Ñandú:     IDLE, LOOK_LEFT, LOOK_RIGHT, PECK_GROUND, HEAD_UP, SHORT_WALK,
+             STOP. El cuello, no solo la posición, reacciona al estado.
+  Carpincho: REST, EAT, SLOW_WALK, LOOK, ENTER_WATER, STAND_NEAR_WATER.
+             ENTER_WATER dispara un anillo de ondas (spawnSplashRingAt) y el
+             sonido de chapoteo posicional — efecto barato, sin simulación
+             de fluidos.
+  Tero:      PECK, LOOK, IDLE, SHORT_WALK. El SECONDARY y los dos AMBIENT
+             corren la máquina con fases propias — no comparten animación.
+
+Ninguno persigue, ataca ni tiene IA compleja. No se tocó nada de eso (§46).
+
+------------------------------------------------------------------------------
+4. CONTACTO CON EL SUELO Y CORRECCIONES (§17-19)
+------------------------------------------------------------------------------
+Ñandú, carpincho y tero usan groundY(x,z) (= terrainHeight) como base, no
+y=0: siguen el relieve en vez de flotar o hundirse. El carpincho usa
+waterOutlinePoint/insideWater para no salir del arco de la orilla ni cruzar
+al centro de la laguna.
+
+Bug encontrado y corregido: el carpincho quedaba en (NaN, NaN, NaN) —
+window.__fauna() lo mostraba como (null, null, null) porque JSON.stringify
+serializa NaN como null. Causa: el objeto userData del carpincho no
+inicializaba walkStart/walkDur; antes de la primera transición de estado,
+Math.max(0.001, undefined) da NaN y se propaga a la posición. Corregido
+agregando walkStart: 0, walkDur: 1 en la construcción. Verificado con
+window.__fauna() en varias corridas: posiciones siempre numéricas.
+
+------------------------------------------------------------------------------
+5. VIENTO Y AGUA (§24-28)
+------------------------------------------------------------------------------
+Se agregó una ráfaga global (GLOBAL wind) sobre el sistema de viento de la
+Fase 4: gustSchedule (calendario de ráfagas irregular, no periódico
+perceptible) + gustMultiplierAt(t), que multiplica el ángulo del viento con
+una envolvente suave (1 + amp·sin(π·progreso)) durante cada ráfaga. Afecta
+gramíneas/cortaderas/hojas/juncos (ya lo hacía desde Fase 4) y ahora también
+el scroll de la textura normal del agua, para que una ráfaga real también
+rice la laguna, no solo el pasto. Los troncos gruesos no se mueven, como
+antes.
+
+------------------------------------------------------------------------------
+6. SONIDO AMBIENTE (§29-36)
+------------------------------------------------------------------------------
+Los sonidos de fauna (pájaro, carpincho, tero) pasaron de ir siempre a
+ctx.destination a tener un PannerNode HRTF posicionado en la ubicación real
+del ejemplar que los emite (makeOneShotPanner). scheduleWildlifeSounds ahora
+elige un objeto vivo real (ave/tero/carpincho) de la escena en vez de una
+posición al azar, y el intervalo entre sonidos se espació (3-10 s en vez de
+1,8-5,3 s) para no llenar cada segundo de sonido — el silencio también es
+parte del paisaje, como pide el brief.
+
+------------------------------------------------------------------------------
+7. SEMILLA Y DETERMINISMO (§38-39)
+------------------------------------------------------------------------------
+FAUNA_SEED = 90601 (por defecto), con generadores propios (faunaRng,
+faunaZoneRng) aislados del rng() global que ya gobierna la vegetación — no
+se tocó esa distribución aprobada. En DEV, ?seed= en la URL permite fijar
+otra semilla para pruebas reproducibles.
+
+------------------------------------------------------------------------------
+8. CÁMARAS QC (§44)
+------------------------------------------------------------------------------
+Agregadas: QC_RHEA, QC_CAPYBARA, QC_BIRDS, QC_FAUNA_WIDE, QC_FAUNA_WATER,
+QC_ANIMATION. QC_RHEA necesitó tres iteraciones: las dos primeras (desde el
+lado -X del ñandú) quedaban con una cortadera/helecho tapando el cuerpo; la
+definitiva se acerca desde +X, más alta, dejando esa misma vegetación detrás
+del animal. QC_ANIMATION iba a encuadrar al ñandú y a un tero a la vez, pero
+están a ~15 m uno del otro y la línea entre ambos pasa cerca del área de los
+personajes (sus carteles de texto aparecían en cuadro); se cambió por un
+plano más cercano y bajo del ñandú, útil para juzgar la zancada.
+Video corto de prueba (§44): comparisons/phase6/PHASE6_fauna_test_video.webm
+(~35 s reales, cámara fija sobre el ñandú, loop de animación real).
+
+------------------------------------------------------------------------------
+9. RENDIMIENTO — ANTES (v080) vs DESPUÉS (v081)
+------------------------------------------------------------------------------
+Medido con el mismo script y las mismas 4 cámaras fijas que en las Fases
+4-5 (p4_measure.mjs), más un barrido de 360° desde el punto de vista real
+(0, 1.6, 4). Entorno: SwiftShader (software) en este contenedor — los FPS
+reales solo significan algo en el visor (?perf=1, ya existe desde Fase 4).
+
+                        v080 (antes)      v081 (después)
+  Triángulos cargados   381.387           378.419
+  Mallas                409               369
+  Instancias            20.049            20.009
+  VRAM estimada         428,0 MB          427,9 MB
+
+  4 cámaras fijas (lo que de verdad ve alguien parado en el punto de vista):
+                        calls / tris        calls / tris
+  QC_GROUND             155 / 354.578       120 / 352.658
+  QC_MID                258 / 374.177       204 / 370.577
+  QC_HIGH               408 / 381.129       363 / 377.845
+  QC_WATER              130 / 349.591       125 / 348.523
+  costo CPU+envío (ms)  1,7-2,9             1,55-3,85
+
+  Conclusión: desde cualquiera de los 4 puntos de vista de referencia, la
+  fauna (nueva máquina de estados, viento con ráfagas, audio posicional) no
+  agregó costo medible — los draw calls y triángulos bajaron levemente
+  (menos mallas sueltas de carpincho/tero que en la versión anterior) y el
+  costo de CPU/envío por frame es el mismo orden (1,5-4 ms) en ambas
+  versiones.
+
+------------------------------------------------------------------------------
+10. PROBLEMA DETECTADO Y NO ATRIBUIBLE A ESTA FASE: pico de CPU en el
+    barrido de 360°
+------------------------------------------------------------------------------
+El barrido de 360° (p4_measure.mjs) mostró un promedio de ~300 ms y un
+máximo de ~4,6 s de CPU por frame en v081, contra ~4 ms / 7,6 ms en v080.
+Investigado a fondo antes de dar la fase por terminada:
+
+  - Aislando el costo puro de lógica (fauna/viento, con render() anulado)
+    del costo real de render(): el pico está SIEMPRE en el render real, casi
+    nunca en la lógica. La lógica de fauna se mantuvo en 1,7-5 ms en TODAS
+    las corridas, igual que v080 — Fase 6 no le agregó costo de CPU al
+    frame.
+  - Se corrió el MISMO diagnóstico contra v080 sin tocar (control): el
+    mismo orden de magnitud (~85 s) aparece en el mismo ángulo (~195°) sin
+    ningún cambio de Fase 6 de por medio. Esto prueba que el fenómeno es
+    PREVIO a esta fase, no una regresión introducida acá.
+  - El propio código ya documentaba esto desde la Fase 4 (v060): "three
+    compila cada shader la primera vez que su material entra en cuadro...
+    medido: 30-80 ms al girar hacia 15° y 195°, ya en v060" — un costo
+    residual aceptado en hardware real. Bajo SwiftShader (software, solo en
+    este contenedor de pruebas) ese mismo costo se amplifica varios órdenes
+    de magnitud.
+  - Se hicieron dos intentos de mitigación de buena fe: (1) extender el
+    renderer.compile() de una sola dirección (Fase 4) a un barrido real de
+    360° con renderer.render() (compile() no sube buffers de geometría ni
+    textura, solo linkea el shader); (2) precalentar puntualmente el anillo
+    de chapoteo del carpincho (el único objeto que Fase 6 crea recién en
+    tiempo de ejecución). Ninguno de los dos cambió el número medido bajo
+    SwiftShader (idéntico antes/después en ambos casos), lo que indica que
+    la causa exacta de la magnitud extrema es propia del compilador de
+    shaders por software de este contenedor, no de un objeto puntual de la
+    escena que un warm-up pueda anticipar.
+  - Los dos cambios (barrido de 360° y precalentado del chapoteo) se
+    mantienen igual: son una mejora sólida y de costo real casi nulo
+    (~12-13 renders extra de la escena completa al iniciar, cada uno de
+    2-8 ms en hardware real según las 4 cámaras fijas), coherente con la
+    técnica que la Fase 4 ya usaba, aunque no se pudo demostrar que
+    resuelvan el número específico bajo software rendering.
+
+  PENDIENTE: validar en el visor real (Quest) con ?perf=1 si este costo de
+  "primera vez que se mira hacia esa dirección" es perceptible ahí; toda la
+  evidencia disponible dice que es un artefacto del renderizado por software
+  de este contenedor, no del hardware real, pero no hay forma de confirmarlo
+  sin probarlo en el dispositivo.
+
+------------------------------------------------------------------------------
+11. OTROS PROBLEMAS DETECTADOS
+------------------------------------------------------------------------------
+  - 404 intermitente sin URL asociada en la consola, presente en algunas
+    corridas y no en otras, sin poder atribuirlo a un recurso concreto pese
+    a instrumentar requestfailed/response/console por separado. Consistente
+    con el ruido de entorno ya documentado en fases anteriores (los 96
+    "Texture marked for update but no image data found" de Fase 4/5). No se
+    encontró causa en el código; se deja anotado como ruido de entorno, no
+    como algo arreglado.
+  - La advertencia "Texture marked for update but no image data found" (ya
+    documentada, inofensiva) aparece más veces que antes durante el arranque
+    porque el nuevo precalentado hace 13 render() en vez de 1 — es más
+    ruido de consola en el arranque, no un error nuevo ni un problema en
+    tiempo real.
+
+------------------------------------------------------------------------------
+12. LO QUE NO SE HIZO (§46, a propósito)
+------------------------------------------------------------------------------
+No se agregaron decenas de animales, ni depredación, ni IA compleja, ni
+combate, ni ataques al usuario, ni elementos de fantasía. No se tocaron los
+personajes históricos, la iluminación ni el paisaje. Se mantuvo la
+distribución ecológica de vegetación ya aprobada (rng() global intacto).
+
+------------------------------------------------------------------------------
+13. LOS 5 PROBLEMAS MÁS SIGNIFICATIVOS QUE QUEDAN (§49)
+------------------------------------------------------------------------------
+1. El pico de CPU del barrido de 360° bajo SwiftShader (sección 10) no se
+   pudo reproducir/explicar al 100% ni descartar como irrelevante en
+   hardware real sin probar en el visor.
+2. El 404 intermitente sin atribuir (sección 11) sigue sin causa conocida.
+3. Solo se implementó el piloto (2 ñandú, 2 carpincho, 3 tero); si se pide
+   sumar venado/zorro/mulita/yacaré hace falta una fase aparte con su propio
+   diseño de comportamiento y verificación de zonas.
+4. QC_FAUNA_WATER y QC_BIRDS se revisaron una sola vez cada una; no se
+   iteraron tanto como QC_RHEA — vale una segunda mirada si se van a usar
+   para material de difusión.
+5. El video de prueba (§44) es una sola toma fija de ~35 s sobre el ñandú;
+   no cubre carpincho ni tero en el mismo clip — alcanzaría para un
+   segundo clip corto si se necesita cubrir las tres especies.
+
+------------------------------------------------------------------------------
+FIN — no se inicia la Fase 7 sin pedido explícito.
+==============================================================================
