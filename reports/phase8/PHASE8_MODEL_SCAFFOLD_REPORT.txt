@@ -1,0 +1,124 @@
+ZAPICÁN — FASE 8 (preparación) · SOPORTE PARA MODELOS 3D REALES DE FAUNA
+==============================================================================
+Snapshot: ZAPICAN_v084_gltf_scaffold (antes: v083_fauna_texture, Fase 7).
+Pedido explícito: "trae y haz lo necesario para tener la calidad que pido,
+al menos como el juego VR 'The Forest'" — esto autoriza traer modelos 3D
+externos con rig (no solo texturas), algo que estaba fuera de alcance desde
+la Fase 1.
+
+------------------------------------------------------------------------------
+1. DECISIÓN DE FUENTE DE LOS MODELOS
+------------------------------------------------------------------------------
+Se evaluaron las fuentes disponibles para conseguir modelos rigged
+fotorrealistas de ñandú, carpincho y tero, gratis y sin fricción:
+  - Sketchfab: tiene modelos de calidad variable pero exige login/OAuth
+    incluso para descargas CC0 — no accesible desde este entorno.
+  - Quaternius: descarga directa sin login, licencia CC0, pero estilo
+    "low-poly / cute" — no compatible con el nivel de realismo pedido.
+  - Bibliotecas pagas: requieren una compra que no puedo autorizar por mi
+    cuenta.
+  - No hay ninguna herramienta de generación de modelos 3D en este entorno.
+
+Decisión tomada junto al usuario: el usuario descarga los archivos por su
+cuenta (por ejemplo desde su propia cuenta de Sketchfab) y me los pasa
+directamente. Yo preparo el código para integrarlos apenas lleguen.
+
+------------------------------------------------------------------------------
+2. QUÉ SE CONSTRUYÓ: CARGA OPCIONAL CON FALLBACK SEGURO
+------------------------------------------------------------------------------
+Se agregó un mecanismo de "upgrade opcional" por individuo de fauna
+(carpincho, ñandú, tero) que:
+  1. Deja intacta toda la geometría procedural actual (nunca se borra).
+  2. Intenta cargar de forma asíncrona un archivo .glb en una ruta fija
+     por especie:
+       /assets/models/capybara.glb
+       /assets/models/rhea.glb
+       /assets/models/tero.glb
+  3. Si el archivo existe y carga bien: oculta los hijos procedurales
+     (child.visible = false, no se destruyen) y agrega el modelo real como
+     hijo del mismo THREE.Group que ya manejan el estado/comportamiento
+     (roaming, animación de cuello/patas, etc. de la Fase 6).
+  4. Si el archivo no existe (404) o falla la carga: no hace nada — sigue
+     mostrándose la fauna procedural exactamente como hoy, sin ningún error
+     visible ni impacto de rendimiento.
+  5. Si el modelo trae animaciones propias (glTF AnimationClip), se
+     reproduce una en loop vía THREE.AnimationMixer (se prioriza un clip
+     llamado idle/rest/stand/quiet/reposo si existe, si no el primero de
+     la lista).
+
+Punto de diseño clave: el comportamiento (Fase 6) mueve y rota el GRUPO
+contenedor, no la malla interna — así que cambiar la malla visible (de
+procedural a modelo real) no requiere tocar ninguna lógica de estado,
+roaming ni contacto con el suelo.
+
+------------------------------------------------------------------------------
+3. VALIDACIÓN
+------------------------------------------------------------------------------
+Con NINGÚN archivo .glb todavía presente (carpeta
+viewer/public/assets/models/ vacía), se corrió el mismo smoke test usado en
+fases anteriores (recorrido + consola) contra la escena con este cambio:
+
+  - Cero errores nuevos de consola atribuibles al cambio.
+  - Se detectó un warning ya conocido ("Texture marked for update but no
+    image data found", ~868 repeticiones) — se confirmó por comparación
+    directa (mismo test, mismo servidor, revirtiendo el cambio con
+    git stash) que ese warning YA estaba presente exactamente igual SIN
+    este cambio: es el mismo artefacto de timing de carga de texturas en
+    software-rendering (SwiftShader) documentado en el informe de Fase 7,
+    ajeno a este cambio puntual.
+  - Se comparó además la captura de la cámara QC_RHEA con y sin el cambio:
+    ambas muestran el mismo problema visual (oscurecimiento por timing de
+    carga, ya documentado) en igual medida — no hay regresión nueva.
+  - Ningún archivo .glb existe aún, por lo que el "onError" silencioso es
+    el único camino ejercitado; queda pendiente probar el camino de éxito
+    (carga real) en cuanto lleguen archivos.
+
+------------------------------------------------------------------------------
+4. RENDIMIENTO
+------------------------------------------------------------------------------
+Sin archivos de modelo presentes, este cambio no agrega geometría ni
+texturas nuevas al frame — es código inerte hasta que un .glb exista. No se
+espera ni se midió cambio de triángulos/VRAM respecto a v083; la medición
+de impacto real se hará cuando se integren los primeros modelos.
+
+------------------------------------------------------------------------------
+5. REQUISITOS PARA LOS ARCHIVOS QUE ENVÍE EL USUARIO
+------------------------------------------------------------------------------
+Formato: .glb (glTF binario) — es autocontenido (geometría + texturas +
+  animaciones en un solo archivo) y carga directo con GLTFLoader de
+  Three.js, sin conversión. Evitar .fbx/.obj/.blend salvo que no haya
+  alternativa (requerirían un paso de conversión aparte).
+
+Rutas exactas de destino (relativas a viewer/public/):
+  assets/models/capybara.glb
+  assets/models/rhea.glb
+  assets/models/tero.glb
+
+Licencia: CC0 o CC-BY como mínimo (compatible con un proyecto que se puede
+  distribuir). Si es CC-BY, indicar el autor/fuente para dejar constancia
+  en el proyecto.
+
+Presupuesto orientativo de calidad (mismo criterio que el brief original
+  de fauna en la Fase 6, adaptado a geometría real en vez de procedural):
+  entre 15.000 y 60.000 triángulos por animal, textura difusa 2K-4K. Un
+  modelo con rig/esqueleto y animaciones baked (idle, walk) es ideal pero
+  no obligatorio — si no trae animación, se muestra estático (la posición
+  y el desplazamiento los sigue manejando el sistema de comportamiento de
+  la Fase 6 igual que hoy con la geometría procedural).
+
+Cómo enviarlos: adjuntándolos directo en el chat (igual que las imágenes
+  de referencia ya compartidas).
+
+------------------------------------------------------------------------------
+6. PENDIENTE — DECISIÓN SOBRE ESPECIES NUEVAS
+------------------------------------------------------------------------------
+La última imagen de referencia (ilustración de campamento charrúa) muestra
+fauna adicional que HOY no existe en la escena: venado de campo, zorro
+gris, mulita/armadillo, garza y un gato montés (además de carpincho y tero,
+que ya están). Sumar cualquiera de estas especies no es un cambio menor:
+cada una necesita su propio sistema de comportamiento/estado (roaming,
+reacciones, contacto con el suelo) igual que se construyó para ñandú/tero/
+carpincho en la Fase 6 — no alcanza con traer solo el modelo 3D. Esta
+decisión de alcance está pendiente de confirmación explícita del usuario.
+
+==============================================================================
