@@ -39,4 +39,23 @@ Estado:    optimizado (31,7 MB → 1,6 MB, 233.132 → 16.368 triángulos vía
            de comportamiento de la Fase 6).
 Uso:       reemplazo candidato si el proyecto resulta ser comercial.
 
+------------------------------------------------------------------------------
+Venado de campo (Ozotoceros bezoarticus) — modelo animado, en uso activo
+------------------------------------------------------------------------------
+Título:    "Realistic Deer 3D Model 2.0 (Demo Free Download)"
+Autor:     WildMesh 3D (https://sketchfab.com/WildMesh_3D)
+Fuente:    https://sketchfab.com/3d-models/realistic-deer-3d-model-20-demo-free-download-30bd8d8458c54b0cb2d66cc12471f1d0
+Licencia:  CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/) —
+           mismo caso que el carpincho: uso educativo confirmado, compatible.
+Uso:       viewer/public/assets/models/venado.glb (no se commitea, igual
+           criterio que el resto de assets pesados).
+Cambios:   1) convertido de KHR_materials_pbrSpecularGlossiness (extensión
+           legacy que el GLTFLoader de Three.js instalado no soporta) a
+           pbrMetallicRoughness estándar, con gltf-transform metalrough.
+           2) re-exportado con gltf-transform (resize 2K→1K, WebP) de 12,96
+           MB a 1,11 MB. 3) el archivo original venía en centímetros, no
+           metros (~184 m de alto sin corregir) — corregido con scale:0.01
+           en el código, no en el archivo. Geometría (15.960 triángulos),
+           rig y animación ("Deer_M|Deer_Idle") sin modificar.
+
 ==============================================================================

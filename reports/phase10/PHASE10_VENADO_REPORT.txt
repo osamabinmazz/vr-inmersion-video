@@ -84,14 +84,67 @@ Candidato concreto identificado para que el usuario evalúe y baje si quiere:
   demo sin descargarla.
 
 ------------------------------------------------------------------------------
-5. QUÉ FALTA
+5. ACTUALIZACIÓN — EL USUARIO CONSIGUIÓ Y MANDÓ EL MODELO REAL (v087)
 ------------------------------------------------------------------------------
-- Si el usuario baja el modelo de WildMesh 3D (o cualquier otro): reemplaza
-  automáticamente al venado procedural en cuanto el archivo exista en
-  /assets/models/venado.glb, sin tocar código.
+El usuario bajó el modelo de WildMesh 3D sugerido en la sección 4 y lo
+mandó completo (un solo archivo, 12,96 MB, sin partir). Antes de usarlo se
+encontraron y corrigieron dos problemas reales, ninguno visible con solo
+mirar el archivo:
+
+  1. Material con extensión legacy no soportada: el archivo usa
+     KHR_materials_pbrSpecularGlossiness (el flujo "specular/glossiness"
+     de PBR, deprecado por Khronos) en vez del estándar
+     pbrMetallicRoughness. El GLTFLoader de Three.js instalado en este
+     proyecto (three@0.169) NO tiene soporte para esa extensión --
+     confirmado revisando el código fuente del loader (cero menciones).
+     Sin corregirlo, la textura de color no se habría visto. Se convirtió
+     con `gltf-transform metalrough` antes de cualquier otra optimización.
+
+  2. Escala equivocada por unidades: el archivo viene modelado en
+     centímetros, no en metros (un desajuste común de exportación). Sin
+     corregir, el venado medía ~184 METROS de alto -- verificado con
+     Box3 preciso, igual método que en la Fase 9 para el carpincho. Con la
+     cámara a pocos metros de la base del modelo, la vista quedaba
+     literalmente adentro de una de sus patas: la escena se veía como si
+     el modelo no hubiera cargado, sin ningún error de consola que lo
+     delatara (`hasRealModel: true`, cero errores). Encontrado recién al
+     medir el bounding box real, no por inspección visual superficial.
+     Corregido con `scale: 0.01` en la llamada a tryUpgradeToModel() (en el
+     código, no se tocó el archivo) -- deja el modelo en ~1,84 m de alto,
+     tamaño real de venado.
+
+Después de las dos correcciones: optimizado con el mismo pipeline que el
+carpincho (gltf-transform: resize 2K→1K, WebP) de 12,96 MB a 1,11 MB.
+Verificado visualmente (capturas QC_VENADO y primer plano): venado
+reconocible con astas, pelaje texturado, correctamente parado en el
+piso -- salto de calidad real frente a la versión procedural, mismo nivel
+que el carpincho.
+
+RENDIMIENTO — v086 (venado procedural) vs v087 (venado real, 2 individuos):
+
+                          v086                v087
+  Triángulos cargados     393.947             425.947   (+32.000, ≈16k×2)
+  Mallas                  416                 424
+  VRAM estimada           450,7 MB            465,1 MB  (+14,4 MB, 3
+                                                          texturas WebP
+                                                          1024²/512² con
+                                                          mipmaps)
+
+Cero errores nuevos de consola en la medición.
+
+Licencia: CC-BY-NC-4.0, igual que el carpincho -- ya confirmado compatible
+con el uso educativo del proyecto (Fase 9, §5). Atribución agregada a
+CREDITS_MODELOS_3D.txt.
+
+------------------------------------------------------------------------------
+6. QUÉ FALTA
+------------------------------------------------------------------------------
+- Ñandú y tero siguen en su versión procedural con textura (Fase 7) -- sin
+  modelo real todavía para ninguna de las dos.
 - Definir si se suman más especies nuevas (zorro, gato montés, garza, chajá,
   etc.) con el mismo patrón, o se prioriza otra cosa.
-- Pulido opcional de orejas/astas del venado procedural si se decide seguir
-  usándolo en primer plano por un tiempo largo.
+- El venado procedural (makeVenado()) queda en el archivo sin usar, oculto
+  detrás del modelo real -- mismo criterio de "no borrar, solo ocultar" que
+  el resto del scaffold de Fase 8, por si hay que volver atrás.
 
 ==============================================================================
