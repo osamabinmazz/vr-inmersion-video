@@ -1,0 +1,97 @@
+ZAPICÁN — FASE 10 · PRIMERA ESPECIE NUEVA: VENADO DE CAMPO
+==============================================================================
+Snapshot: ZAPICAN_v086_venado (antes: v085_real_capybara, Fase 9).
+Pedido: proyecto educativo, sumar especies más allá de las tres de la Fase 6.
+Primera elegida: venado de campo (Ozotoceros bezoarticus) — herbívoro de
+comportamiento tranquilo, mismo patrón de sistema que ya existe.
+
+------------------------------------------------------------------------------
+1. QUÉ SE CONSTRUYÓ
+------------------------------------------------------------------------------
+Geometría procedural propia (makeVenado()), mismo nivel de detalle que
+carpincho/tero/ñandú: cuerpo capsular, vientre y garganta más claros (rasgo
+real de la especie, ayuda a distinguirlo de otro herbívoro similar a lo
+lejos), cuello en pivote propio para bajar la cabeza al pastar, orejas
+grandes erguidas, y astas chicas bifurcadas SOLO en el individuo hero
+(i===0) — las hembras de venado de campo no tienen astas, así que sirve
+también como detalle de identificación de la especie sin costo extra.
+Reutiliza la textura de pelaje ya existente (furTex/furBump, Fase 7).
+
+Máquina de estados (VENADO_STATES): REST/EAT/LOOK_UP/ALERT/SHORT_WALK — igual
+patrón que el carpincho, sin nada de agua (pastorea en la llanura abierta,
+como el ñandú). En ALERT/LOOK_UP las orejas se levantan; en EAT el cuello
+baja a pastar. 2 individuos (VENADO_COUNT=2), scatterPositions más lejos del
+agua que el ñandú (rMin=7 vs 6) porque el venado real evita el borde húmedo.
+
+Cámara QC_VENADO agregada para verificación. tryUpgradeToModel() ya
+apuntando a /assets/models/venado.glb, listo para reemplazo por modelo real
+cuando llegue (mismo mecanismo de fallback silencioso de la Fase 8).
+
+------------------------------------------------------------------------------
+2. VALIDACIÓN
+------------------------------------------------------------------------------
+Smoke test: cero errores nuevos de consola (mismo warning ya documentado de
+timing de texturas). Capturas de QC_VENADO y dos primeros planos (frontal y
+trasero) confirman: silueta reconocible como venado (cuerpo esbelto,
+vientre claro, cuello erguido, patas finas), correctamente asentado en el
+piso. Detalle pendiente de pulido: orejas/astas se ven pequeñas/poco
+diferenciadas en primer plano muy cercano — aceptable al nivel de
+estilización del resto de la fauna procedural, no bloqueante.
+
+------------------------------------------------------------------------------
+3. RENDIMIENTO — v085 (sin venado) vs v086 (con venado, 2 individuos)
+------------------------------------------------------------------------------
+                          v085                v086
+  Triángulos cargados     390.955             393.947   (+2.992, +0,77%)
+  Mallas                  371                 416        (+45, ≈22/individuo)
+  VRAM estimada           450,6 MB            450,7 MB   (+0,1 MB — geometría
+                                                          procedural pura,
+                                                          reutiliza texturas
+                                                          ya cargadas)
+
+Cero errores nuevos en ambas mediciones. El "cpuFrameMean" del barrido de
+360° dio muy distinto entre una medición y otra (142 ms vs 6 ms) — es la
+misma variabilidad de arranque de shaders en software-rendering (SwiftShader)
+ya documentada desde la Fase 6, no un efecto real de este cambio: agregar
+geometría procedural liviana no puede mejorar 24x el rendimiento por sí sola.
+
+------------------------------------------------------------------------------
+4. BÚSQUEDA DE MODELO REAL — RESULTADO: BLOQUEADO, NO SOLO POR SKETCHFAB
+------------------------------------------------------------------------------
+A pedido explícito ("debe ser de la misma calidad del carpincho o mejor,
+busca y descarga"), se intentó bajar un modelo real yo mismo, no solo
+buscarlo:
+  - Sketchfab: ya sabido, exige login incluso para descargas gratis.
+  - Poly Pizza (poly.pizza): NO exige login, pero el intento de descarga real
+    (no una búsqueda, un fetch real de la página) fue bloqueado por un check
+    anti-bot de Cloudflare específico de este entorno en la nube (la IP del
+    contenedor no pasa la verificación "no sos un bot"). Confirmado con dos
+    métodos distintos (fetch directo y navegador headless real), mismo
+    resultado.
+
+Conclusión: la limitación de fondo no es solo la cuenta de Sketchfab -- es
+que este entorno no puede bajar archivos de la mayoría de estos sitios,
+sin importar cuál. El único canal que funcionó en todo el proyecto es que
+el usuario baje el archivo con su navegador/cuenta normal y me lo pase (como
+con el carpincho).
+
+Candidato concreto identificado para que el usuario evalúe y baje si quiere:
+  "Realistic Deer 3D Model 2.0 (Demo Free Download)" — WildMesh 3D, Sketchfab.
+  https://sketchfab.com/3d-models/realistic-deer-3d-model-20-demo-free-download-30bd8d8458c54b0cb2d66cc12471f1d0
+  Licencia CC-BY-NC (compatible con el uso educativo confirmado), 16.000
+  triángulos, rigged. La versión gratuita es una demo (la completa, con 145
+  animaciones, es paga) -- no se pudo verificar cuántas animaciones trae la
+  demo sin descargarla.
+
+------------------------------------------------------------------------------
+5. QUÉ FALTA
+------------------------------------------------------------------------------
+- Si el usuario baja el modelo de WildMesh 3D (o cualquier otro): reemplaza
+  automáticamente al venado procedural en cuanto el archivo exista en
+  /assets/models/venado.glb, sin tocar código.
+- Definir si se suman más especies nuevas (zorro, gato montés, garza, chajá,
+  etc.) con el mismo patrón, o se prioriza otra cosa.
+- Pulido opcional de orejas/astas del venado procedural si se decide seguir
+  usándolo en primer plano por un tiempo largo.
+
+==============================================================================
