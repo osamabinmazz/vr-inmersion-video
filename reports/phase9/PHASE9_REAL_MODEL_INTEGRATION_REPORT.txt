@@ -96,17 +96,62 @@ estático, con la posición/desplazamiento manejados igual por el sistema de
 comportamiento de la Fase 6).
 
 ------------------------------------------------------------------------------
-7. QUÉ FALTA
+7. RENDIMIENTO — v084 (procedural) vs v085 (carpincho real, 3 instancias)
+------------------------------------------------------------------------------
+Mismo script y mismas 4 cámaras que en las Fases 4-6 (p4_measure.mjs), antes/
+después con el mismo servidor: se sacó capybara.glb para medir "antes"
+(vuelve a la fauna procedural), se lo repuso y se midió "después".
+
+                          v084 (procedural)   v085 (carpincho real)
+  Triángulos cargados     378.419             390.875   (+12.456, +3,3%)
+  Mallas                  369                 369
+  VRAM estimada           432,9 MB            450,6 MB  (+17,7 MB, +4,1%)
+    – geometría             9,1 MB              10,7 MB
+    – texturas            406,3 MB            422,3 MB  (+16 MB ≈ 3 texturas
+                                                          WebP 1024² con
+                                                          mipmaps, lo esperado)
+  cpuFrameMs (barrido)     196,7 ms media       137,8 ms media
+                           4599,1 ms pico       3184,9 ms pico
+
+Cero errores nuevos en consola en ambas mediciones. El pico de CPU del
+barrido de 360° (ya documentado desde la Fase 6 como un artefacto de
+SwiftShader/software-rendering, no de la escena) sigue presente en ambas
+mediciones, sin agravarse — si algo, salió más bajo en la medición "después",
+dentro del ruido ya conocido de este entorno de pruebas, no una mejora real
+atribuible al cambio.
+
+Conclusión: el costo de agregar el primer modelo real es chico y predecible
+(la carga compartida + SkeletonUtils evita que sea 3 veces más grande).
+
+------------------------------------------------------------------------------
+8. ESCALA Y CONTACTO CON EL SUELO — VERIFICADO CON MEDICIÓN, NO A OJO
+------------------------------------------------------------------------------
+Se midió el bounding box real (THREE.Box3, con el flag `precise` para que
+recorra los vértices ya posicionados por el esqueleto, no el bind-pose sin
+transformar) de las 2 instancias visibles, con la animación congelada en
+t=0 para que ambas mediciones sean comparables:
+
+  - Tamaño: ~1,00 × 0,76 × 0,74 m y ~0,79 × 0,76 × 0,96 m (difieren en X/Z
+    porque cada carpincho tiene una rotación de grupo distinta; la altura Y
+    es idéntica en ambas: 0,7615 m — coherente con un capybara real erguido).
+  - Contacto con el suelo: boxMin.y quedó a ~2 mm de group.position.y en las
+    2 instancias — el modelo YA apoya bien las patas en el piso del grupo,
+    sin flotar.
+
+Primero se había medido esto SIN el flag `precise` y con la animación
+corriendo: dio un resultado erróneo (bounding box ~7 veces más chico y
+"flotando" 15-80 cm sobre el piso) — era un artefacto de medición (Box3 sin
+`precise` no aplica las matrices del esqueleto), no un problema real del
+modelo. Conclusión: scale:1/rotationY:0, los valores por defecto del
+scaffold de Fase 8, ya son correctos para este modelo — no hizo falta
+ajustar nada.
+
+------------------------------------------------------------------------------
+9. QUÉ FALTA
 ------------------------------------------------------------------------------
 - Confirmación del usuario: ¿proyecto comercial o no? Define si el carpincho
   animado (NC) se mantiene o se reemplaza por el estático (BY).
-- Ajuste fino de escala/rotación/yOffset del modelo real contra el terreno
-  (hoy con los valores por defecto scale:1/rotationY:0 — a simple vista se
-  asienta bien, pero no se hizo una pasada de ajuste dedicada).
 - Ñandú y tero siguen usando la geometría procedural con textura (Fase 7):
   no llegó todavía ningún modelo real para esas dos especies.
-- Medición de rendimiento con el modelo real cargado (triángulos/VRAM antes/
-  después) — no se hizo en este informe, pendiente si se decide fijar esta
-  versión.
 
 ==============================================================================
