@@ -1,0 +1,112 @@
+ZAPICÁN — FASE 9 · PRIMER MODELO 3D REAL INTEGRADO (CARPINCHO)
+==============================================================================
+Snapshot: ZAPICAN_v085_real_capybara (antes: v084_gltf_scaffold, Fase 8).
+Continuación directa de la Fase 8 (scaffold de carga de modelos): el usuario
+consiguió y envió el primer modelo real que pasa el criterio de calidad
+(ver sección 1).
+
+------------------------------------------------------------------------------
+1. EL MODELO
+------------------------------------------------------------------------------
+"Capybara" por Rectus (Sketchfab), recibido partido en 3 fragmentos binarios
+y recombinado localmente. Verificado por SHA-256 contra el hash provisto por
+el usuario antes de usarlo (coincidencia exacta).
+
+A diferencia de los dos paquetes de proxies evaluados antes (ver Fase 8):
+  - 6.268 triángulos, malla única.
+  - Material PBR completo: color base + normal map + metalness/roughness/
+    oclusión combinados, las tres texturas a 4096×4096.
+  - Rig completo (esqueleto de 78 nodos) y una animación baked ("Yawning").
+  - Licencia: CC-BY-NC-4.0 (No Comercial) — ver CREDITS_MODELOS_3D.txt.
+
+------------------------------------------------------------------------------
+2. OPTIMIZACIÓN (76,8 MB → 845 KB)
+------------------------------------------------------------------------------
+El archivo tal cual llegó pesa 76,8 MB — inviable para VR (tres texturas de
+4K sin comprimir). Se optimizó con gltf-transform (CLI oficial de la
+comunidad glTF, instalado solo para este paso, no es dependencia del
+proyecto):
+  - Resize de las tres texturas 4096×4096 → 1024×1024.
+  - Recompresión de PNG a WebP (con pérdida, pero sin diferencia visible a
+    la distancia de cámara de este proyecto).
+  - dedup/prune/weld estándar de glTF-Transform.
+  - Geometría SIN comprimir (se dejó fuera meshopt/Draco a propósito: son
+    6.268 triángulos, no vale la pena, y evita que el archivo dependa de un
+    decoder extra en tiempo de ejecución — solo requiere la extensión
+    EXT_texture_webp, que Three.js soporta nativamente).
+
+Resultado: 845 KB, mismo triángulo/material/rig/animación, verificado
+visualmente sin pérdida perceptible (comparación en las capturas de este
+informe).
+
+------------------------------------------------------------------------------
+3. INTEGRACIÓN Y CACHÉ COMPARTIDO
+------------------------------------------------------------------------------
+El archivo quedó en viewer/public/assets/models/capybara.glb — el mismo path
+que el scaffold de la Fase 8 ya esperaba, así que tryUpgradeToModel() lo
+levantó sin cambios de código iniciales.
+
+Se agregó una mejora sobre el scaffold original: como hay 3 carpinchos en la
+escena apuntando al mismo archivo, tryUpgradeToModel() ahora cachea la
+promesa de carga por ruta (Map<path, Promise<GLTF>>) — se descarga y parsea
+UNA sola vez, y cada individuo clona el resultado con SkeletonUtils.clone()
+(a diferencia de Object3D.clone(), sí soporta huesos/skin). Cada clon tiene
+su propio AnimationMixer con el tiempo de arranque desincronizado al azar
+(mixer.setTime(faunaRng() * clip.duration)) para que los 3 no bostecen en el
+mismo frame exacto.
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Smoke test (recorrido + consola) antes y después de cada cambio:
+  - Modelo sin optimizar (76,8 MB): carga bien, cero errores nuevos, capturado
+    visualmente — carpincho reconocible con pelaje/orejas/hocico reales.
+  - Modelo optimizado (845 KB): mismo resultado visual, cero errores nuevos.
+  - Con el caché SkeletonUtils (3 instancias, mismo archivo): cero errores
+    nuevos, visual sin cambios respecto a antes del refactor.
+Único warning presente en los tres casos: el ya documentado en Fase 7
+("Texture marked for update but no image data found"), confirmado pre-
+existente y ajeno a este trabajo.
+
+------------------------------------------------------------------------------
+5. LICENCIA — DECISIÓN PENDIENTE DEL USUARIO
+------------------------------------------------------------------------------
+CC-BY-NC-4.0 = No Comercial. Válido si el proyecto es educativo/cultural/
+demo; si en algún momento se vuelve comercial, este modelo puntual no sirve
+y hay que reemplazarlo (ver punto 6) o conseguir una licencia comercial del
+mismo autor. Se agregó CREDITS_MODELOS_3D.txt con la atribución que exige la
+licencia (autor + fuente + licencia), independientemente de qué se decida.
+
+------------------------------------------------------------------------------
+6. SEGUNDO MODELO RECIBIDO — CANDIDATO ALTERNATIVO (NO ACTIVO)
+------------------------------------------------------------------------------
+El usuario envió un segundo modelo, "Capybara Profile" (restore50,
+Sketchfab), también recombinado y verificado por SHA-256. Es un modelo
+distinto, no una variante del primero:
+  - Licencia CC-BY-4.0 (SÍ permite uso comercial, con atribución).
+  - Escaneo estático: 233.132 triángulos, sin rig ni animación.
+  - Se optimizó igual (gltf-transform: decimado + textura a WebP) de 31,7 MB
+    a 1,6 MB, 16.368 triángulos — dentro de presupuesto VR.
+  - NO se desplegó en la escena todavía (no reemplaza al modelo animado
+    mientras no haya una razón para hacerlo).
+
+Queda como reemplazo listo para usar si la respuesta a "¿el proyecto es
+comercial?" es sí, a costa de perder la animación de bostezo (se vería
+estático, con la posición/desplazamiento manejados igual por el sistema de
+comportamiento de la Fase 6).
+
+------------------------------------------------------------------------------
+7. QUÉ FALTA
+------------------------------------------------------------------------------
+- Confirmación del usuario: ¿proyecto comercial o no? Define si el carpincho
+  animado (NC) se mantiene o se reemplaza por el estático (BY).
+- Ajuste fino de escala/rotación/yOffset del modelo real contra el terreno
+  (hoy con los valores por defecto scale:1/rotationY:0 — a simple vista se
+  asienta bien, pero no se hizo una pasada de ajuste dedicada).
+- Ñandú y tero siguen usando la geometría procedural con textura (Fase 7):
+  no llegó todavía ningún modelo real para esas dos especies.
+- Medición de rendimiento con el modelo real cargado (triángulos/VRAM antes/
+  después) — no se hizo en este informe, pendiente si se decide fijar esta
+  versión.
+
+==============================================================================

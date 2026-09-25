@@ -1,0 +1,41 @@
+ZAPICÁN — CRÉDITOS DE MODELOS 3D EXTERNOS
+==============================================================================
+Los modelos 3D reales usados como upgrade opcional de la fauna (ver Fase 8,
+reports/phase8/) no son de autoría propia del proyecto. Este archivo deja
+constancia de origen y licencia de cada uno, requisito de las licencias
+Creative Commons con atribución bajo las que se distribuyen.
+
+------------------------------------------------------------------------------
+Carpincho (Hydrochoerus hydrochaeris) — modelo animado, en uso activo
+------------------------------------------------------------------------------
+Título:    "Capybara"
+Autor:     Rectus (https://sketchfab.com/rectus)
+Fuente:    https://sketchfab.com/3d-models/capybara-445b5a9c131d482fad76bf5b6c2f8271
+Licencia:  CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+Uso:       viewer/public/assets/models/capybara.glb (no se commitea al repo,
+           igual que el resto de los assets pesados — ver .gitignore).
+Cambios:   se re-exportó con gltf-transform (resize de texturas 4K→1K,
+           recompresión a WebP) para bajar de 76,8 MB a 845 KB. Geometría,
+           material, rig y animación ("Yawning") sin modificar.
+
+RESTRICCIÓN IMPORTANTE: licencia No-Comercial. Válido para uso no comercial
+(educativo/cultural/demo); si el proyecto pasa a ser comercial, este modelo
+puntual debe reemplazarse por uno con licencia comercial o por el modelo
+alternativo de abajo.
+
+------------------------------------------------------------------------------
+Carpincho (Hydrochoerus hydrochaeris) — modelo alternativo, NO activo todavía
+------------------------------------------------------------------------------
+Título:    "Capybara Profile"
+Autor:     restore50 (https://sketchfab.com/restore50)
+Fuente:    https://sketchfab.com/3d-models/capybara-profile-3056f587e82f4a7f91cfa6ad313b3cbc
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/) — SÍ permite
+           uso comercial con atribución.
+Estado:    optimizado (31,7 MB → 1,6 MB, 233.132 → 16.368 triángulos vía
+           gltf-transform) pero sin desplegar en la escena. Es un escaneo
+           estático: sin rig ni animación propia (se vería quieto, la
+           posición/desplazamiento la seguiría manejando igual el sistema
+           de comportamiento de la Fase 6).
+Uso:       reemplazo candidato si el proyecto resulta ser comercial.
+
+==============================================================================
