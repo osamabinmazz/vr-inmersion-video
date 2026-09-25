@@ -1,0 +1,122 @@
+ZAPICÁN — FASE 15 · VENADO: REEMPLAZO DE MODELO REAL
+==============================================================================
+Snapshot: ZAPICAN_v091_venado_swap (antes: v090_mulita_real, Fase 14).
+
+El usuario subió un lote grande de archivos sin instrucción de texto,
+seguido de una pregunta de priorización. Se estableció el siguiente orden:
+1) evaluar y reemplazar el venado solo si el nuevo modelo (CC-BY-4.0) es
+igual o mejor visualmente que el actual (CC-BY-NC-4.0), 2) agregar la roca
+como detalle disperso del terreno, 3) integrar los chunks de pasto como
+cobertura suplementaria, sin tocar el pasto procedural existente.
+
+Este informe cubre el punto 1.
+
+------------------------------------------------------------------------------
+1. COMPARACIÓN
+------------------------------------------------------------------------------
+  - Actual (WildMesh 3D, CC-BY-NC-4.0): 15.960 triángulos, con rig y
+    animación de reposo, pero con proporciones y astas de un ciervo/alce
+    norteamericano de cuerpo pesado -- lejos de la silueta esbelta de un
+    venado de campo (Ozotoceros bezoarticus) real. Licencia no-comercial.
+  - Nuevo (pighunt3r15, CC-BY-4.0): 9.754 triángulos, sin rig ni animación,
+    pero con proporciones mucho más elegantes/creíbles como venado (cuerpo
+    esbelto, vientre y garganta claros, orejas grandes), y textura de
+    pelaje con más detalle. Licencia SÍ permite uso comercial.
+
+Se optó por reemplazar: mejor proporción y calidad visual, y quita la
+restricción no-comercial de esta especie (queda solo el carpincho como
+único modelo CC-BY-NC-4.0 activo del proyecto).
+
+------------------------------------------------------------------------------
+2. EL PROBLEMA DE LAS ASTAS Y CÓMO SE RESOLVIÓ SIN COSTURAS
+------------------------------------------------------------------------------
+El modelo nuevo trae las astas incluidas en el archivo, pero sin variante
+sin astas (a diferencia del venado procedural, que agrega astas solo al
+individuo hero por código). Como las hembras de venado de campo real NO
+tienen astas, hacía falta poder ocultarlas por individuo -- igual criterio
+que ya usaba este proyecto.
+
+Se investigó si las astas estaban SOLDADAS a la malla del cuerpo (lo que
+haría cualquier separación arriesgada, con costuras visibles) o si eran
+geometría separada fusionada en un solo mesh de exportación (común en
+assets "game-ready" donde cada parte se modela por separado sin unir
+vértices). Se hizo un análisis de componentes conectados (union-find sobre
+el buffer de índices): el mesh se descompone en 26 islas independientes
+(cuerpo, 4 patas, 4 pezuñas, 2 orejas, cola, y 10 piezas de astas -- vigas
+principales + puntas). Esto confirmó que las astas NO están soldadas.
+
+Para clasificar cuáles de las 26 islas son astas, hizo falta la posición
+MUNDIAL real de cada vértice, no la cruda del archivo: el nodo del modelo
+tiene 3 transformaciones anidadas (rotación + escala) que hacen que el eje
+"Y" del archivo no corresponda al vertical real de la escena -- se detectó
+comparando la altura cruda contra el tamaño ya medido con Box3 en una
+carga real del modelo. Con la posición mundial correcta, las astas
+resultaron ser las 10 islas cuyo punto más alto supera Y=3,9 (el cuerpo
+sin astas no pasa de Y=3,78) -- un umbral limpio, sin ambigüedad.
+
+Con esa clasificación se separaron las astas en una SEGUNDA malla dentro
+del mismo archivo (misma técnica que usa gltf-transform para primitivas:
+mismos atributos de posición/normal/UV, solo se reparten los triángulos
+entre dos listas de índices distintas). Verificado visualmente en una
+escena aislada: separación perfecta, sin huecos ni costuras -- confirma
+que las piezas nunca estuvieron fusionadas por vértice.
+
+En el código, la malla de astas se identifica por su cantidad de
+triángulos (1.915, un valor fijo y verificado) y se oculta para todo
+individuo que no sea el hero (i !== 0), reusando el gancho `onModel` que
+ya se había agregado en la Fase 13 para el copete del tero.
+
+------------------------------------------------------------------------------
+3. OPTIMIZACIÓN Y ESCALA
+------------------------------------------------------------------------------
+Sin rig ni animación (a diferencia del modelo anterior) -- no requiere
+AnimationMixer, mismo caso que ñandú/tero/mulita. Optimizado con
+gltf-transform (texturas a WebP 1024px, geometría SIN comprimir para no
+arriesgar la separación de astas recién hecha, y sin `join` para que las
+dos mallas no se fusionen de nuevo) de 1,07 MB a 505 KB.
+
+Escala: el archivo mide ~4,63 m de alto con astas tal cual viene --
+corregido con scale:0.24. Verificado con Box3 en las tres instancias reales
+de la escena: 1,11 m de alto con astas (hero) / patas apoyadas en el piso
+con ~0,16 mm de separación en las tres, prácticamente exacto, al primer
+intento.
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores nuevos de
+consola (mismo warning de timing de texturas ya documentado). Verificado
+en la escena real: hero con astas visibles, ambas secundarias sin astas.
+Verificación visual adicional en escena aislada limpia confirmando el
+resultado sin ambigüedad.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — v090 (venado WildMesh) vs v091 (venado pighunt3r15)
+------------------------------------------------------------------------------
+                          v090              v091
+  Triángulos cargados   1.021.722        1.003.104   (-18.618, el nuevo
+                                                       modelo es más liviano
+                                                       pese a la malla extra
+                                                       de astas)
+  Mallas                   519               516      (-3)
+  VRAM estimada          541,6 MB          533,1 MB   (-8,5 MB, textura
+                                                       compartida de 505 KB
+                                                       vs 1,11 MB anterior)
+
+Cero errores nuevos de consola. Este reemplazo es la primera reducción neta
+de costo de este arco de "subir a modelo real" (todas las fases anteriores
+sumaban triángulos/VRAM) -- el modelo nuevo es simplemente más liviano y
+mejor optimizado que el que reemplaza.
+
+------------------------------------------------------------------------------
+6. LÍMITE HONESTO
+------------------------------------------------------------------------------
+Las astas siguen siendo de un ciervo norteamericano multipunta (8-10
+puntas), no el fork simple de 2-3 puntas de un venado de campo real -- no
+se remodeló la forma de las astas, solo se las separó por sexo. El resto
+del cuerpo (proporción, pelaje, cara) es una mejora clara sobre el modelo
+anterior, y sigue siendo, como todos los modelos de este proyecto salvo el
+carpincho y la mulita, una aproximación y no un escaneo exacto de la
+especie.
+
+==============================================================================

@@ -40,29 +40,68 @@ Estado:    optimizado (31,7 MB → 1,6 MB, 233.132 → 16.368 triángulos vía
 Uso:       reemplazo candidato si el proyecto resulta ser comercial.
 
 ------------------------------------------------------------------------------
-Venado de campo (Ozotoceros bezoarticus) — modelo animado, en uso activo
+Venado de campo (Ozotoceros bezoarticus) — modelo real, en uso activo
+------------------------------------------------------------------------------
+Título:    "Realistic Deer"
+Autor:     pighunt3r15 (https://sketchfab.com/pighunt3r15)
+Fuente:    https://sketchfab.com/3d-models/realistic-deer-76039b75cdc0492a80680c2404725496
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/) — SÍ
+           permite uso comercial con atribución (reemplaza al modelo de
+           WildMesh 3D de abajo, que era CC-BY-NC-4.0, no comercial).
+
+Reemplazo de modelo (Fase 15): el usuario subió este modelo sin pedido
+explícito más allá de "evaluar y reemplazar el venado solo si es igual o
+mejor visualmente". Comparado en escena aislada contra el de WildMesh 3D:
+mejores proporciones (el de WildMesh era más parecido a un ciervo/alce
+norteamericano de cuerpo pesado, astas multipunta enormes), textura de
+pelaje más detallada y realista, y licencia sin restricción comercial. Se
+optó por reemplazarlo.
+
+Cambios: 1) sin rig ni animación (a diferencia del anterior, que sí tenía
+un ciclo de reposo) -- no hace falta AnimationMixer, mismo caso que ñandú/
+tero/mulita. 2) el archivo trae las astas SOLDADAS COMO MALLA APARTE (no al
+mismo mesh, pero sí en el mismo archivo) sin separación por sexo -- se
+detectaron mediante análisis de componentes conectados (26 islas de
+malla en total) y clasificación por altura mundial real (world Y, no la Y
+cruda del archivo: el nodo tiene 3 transformaciones anidadas de rotación/
+escala que hacen que la Y del archivo NO sea la vertical real) para
+separar las astas (10 de las 26 islas, Y mundial > 3,9, por encima del
+punto más alto del cuerpo sin astas) en una segunda malla dentro del mismo
+mesh, sin tocar ni un vértice de posición -- solo reorganiza qué triángulos
+pertenecen a qué malla. Verificado visualmente: separación perfecta, sin
+costuras ni huecos. Esto permite ocultar las astas en las hembras/
+individuos secundarios en el código, igual criterio que el venado
+procedural original (astas solo en el hero). 3) optimizado con
+gltf-transform (texturas a WebP 1024px, geometría sin comprimir para no
+arriesgar la separación de astas) de 1,07 MB a 505 KB. 4) escala: el
+archivo mide ~4,63 m de alto con astas tal cual viene -- corregido con
+scale:0.24, verificado con Box3 (dio 1,11 m con astas arriba, tamaño
+creíble para la especie real incluyendo la simplificación de que las astas
+son más elaboradas -multipunta- que el fork simple de un venado de campo
+real).
+
+LÍMITE HONESTO: las astas siguen siendo de un ciervo norteamericano
+multipunta, no el fork simple de 2-3 puntas de un venado de campo real --
+no se intentó remodelar la forma de las astas (serían necesarios cambios
+de geometría más allá de separar mallas existentes), solo separarlas por
+sexo. El resto del cuerpo (proporción, pelaje, cara) es una mejora clara
+sobre el modelo anterior.
+
+------------------------------------------------------------------------------
+Venado de campo — modelo anterior, RETIRADO en Fase 15
 ------------------------------------------------------------------------------
 Título:    "Realistic Deer 3D Model 2.0 (Demo Free Download)"
 Autor:     WildMesh 3D (https://sketchfab.com/WildMesh_3D)
 Fuente:    https://sketchfab.com/3d-models/realistic-deer-3d-model-20-demo-free-download-30bd8d8458c54b0cb2d66cc12471f1d0
-Licencia:  CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/) —
-           mismo caso que el carpincho: uso educativo confirmado, compatible.
-Uso:       viewer/public/assets/models/venado.glb (no se commitea, igual
-           criterio que el resto de assets pesados).
-Cambios:   1) convertido de KHR_materials_pbrSpecularGlossiness (extensión
-           legacy que el GLTFLoader de Three.js instalado no soporta) a
-           pbrMetallicRoughness estándar, con gltf-transform metalrough.
-           2) re-exportado con gltf-transform (resize 2K→1K, WebP) de 12,96
-           MB a 1,11 MB. 3) el archivo original venía en centímetros, no
-           metros (~184 m de alto sin corregir) — corregido con scale:0.01
-           en el código, no en el archivo. Geometría (15.960 triángulos),
-           rig y animación ("Deer_M|Deer_Idle") sin modificar. 4) recolor de
-           la textura de color del cuerpo (material "Deer_M"): el original
-           es un template genérico de ciervo con pelaje gris-topo
-           desaturado, no el pardo-rojizo cálido del venado de campo real —
-           corregido por transferencia de color (ganancia por canal RGB +
-           saturación) preservando el detalle de la textura original. Las
-           astas (material "Deer_Antler") no se tocaron.
+Licencia:  CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+
+Usado en las Fases 10-14 (ver esos informes para el historial completo de
+cambios: conversión de material legacy, corrección de escala de
+centímetros a metros, recolor de pelaje gris-topo a pardo-rojizo).
+Reemplazado en la Fase 15 por el modelo de pighunt3r15 de arriba: mejor
+proporcionado, mejor textura, y sin la restricción no-comercial. El
+archivo ya no está en uso pero se documenta acá por historial, siguiendo
+el mismo criterio que el candidato alternativo de carpincho.
 
 ------------------------------------------------------------------------------
 Ñandú (Rhea americana) — modelo adaptado, en uso activo
