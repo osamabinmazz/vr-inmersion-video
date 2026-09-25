@@ -56,6 +56,12 @@ Cambios:   1) convertido de KHR_materials_pbrSpecularGlossiness (extensión
            MB a 1,11 MB. 3) el archivo original venía en centímetros, no
            metros (~184 m de alto sin corregir) — corregido con scale:0.01
            en el código, no en el archivo. Geometría (15.960 triángulos),
-           rig y animación ("Deer_M|Deer_Idle") sin modificar.
+           rig y animación ("Deer_M|Deer_Idle") sin modificar. 4) recolor de
+           la textura de color del cuerpo (material "Deer_M"): el original
+           es un template genérico de ciervo con pelaje gris-topo
+           desaturado, no el pardo-rojizo cálido del venado de campo real —
+           corregido por transferencia de color (ganancia por canal RGB +
+           saturación) preservando el detalle de la textura original. Las
+           astas (material "Deer_Antler") no se tocaron.
 
 ==============================================================================

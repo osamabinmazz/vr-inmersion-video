@@ -137,7 +137,39 @@ con el uso educativo del proyecto (Fase 9, §5). Atribución agregada a
 CREDITS_MODELOS_3D.txt.
 
 ------------------------------------------------------------------------------
-6. QUÉ FALTA
+6. CORRECCIÓN DE COLOR DE PELAJE (a pedido: "fíjate si es así, si no editalo")
+------------------------------------------------------------------------------
+El modelo de WildMesh 3D es un template genérico de "ciervo realista" --
+no está pensado específicamente para el venado de campo (Ozotoceros
+bezoarticus). Se comparó contra fuentes sobre la especie real (Wikipedia,
+Animal Diversity Web): pelaje "tan"/pardo-rojizo, más intenso en el lomo que
+en las extremidades, partes bajas y cara interna de las patas más claras
+(cremosas), parche blanco en la garganta.
+
+Se extrajo la textura de color real del modelo (no una captura de pantalla,
+el archivo de imagen tal cual vive en el .glb) y se midió el color con
+muestras de píxeles: el lomo daba RGB(173,158,150) -- un gris-topo muy
+desaturado, lejos del pardo-rojizo cálido descrito arriba. Confirmaba lo que
+se veía en el visor: un venado más gris/crema que canela.
+
+Corrección aplicada directamente sobre esa textura (no fue necesario tocar
+geometría ni UV): una transferencia de color por canal (ganancia R×1,18,
+G×0,98, B×0,68) más un empuje de saturación moderado, en vez de un tinte
+monocromo parejo (se probó primero y quedó demasiado sepia/plano, perdiendo
+el contraste entre lomo, flancos y cara que ya traía el modelo). Resultado:
+lomo RGB(208,154,99) -- pardo-canela cálido, más oscuro en cuello/flancos,
+manteniendo el detalle de pelaje y la variación tonal original de la
+textura. Verificado visualmente en el visor: se nota el cambio, sigue
+leyéndose como el mismo modelo (mismas costuras UV, mismo detalle), pero con
+un color mucho más parecido a la referencia real.
+
+No se tocó el material de las astas (Deer_Antler) ni la geometría/rig/
+animación -- cambio acotado a un solo archivo de textura dentro del .glb.
+Sin cambios de código (tryUpgradeToModel sigue igual); no genera un
+snapshot nuevo de main.js porque no hay diff de código, solo de asset.
+
+------------------------------------------------------------------------------
+7. QUÉ FALTA
 ------------------------------------------------------------------------------
 - Ñandú y tero siguen en su versión procedural con textura (Fase 7) -- sin
   modelo real todavía para ninguna de las dos.
