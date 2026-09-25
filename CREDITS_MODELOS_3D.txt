@@ -18,10 +18,11 @@ Cambios:   se re-exportó con gltf-transform (resize de texturas 4K→1K,
            recompresión a WebP) para bajar de 76,8 MB a 845 KB. Geometría,
            material, rig y animación ("Yawning") sin modificar.
 
-RESTRICCIÓN IMPORTANTE: licencia No-Comercial. Válido para uso no comercial
-(educativo/cultural/demo); si el proyecto pasa a ser comercial, este modelo
-puntual debe reemplazarse por uno con licencia comercial o por el modelo
-alternativo de abajo.
+Licencia No-Comercial — CONFIRMADO COMPATIBLE: el proyecto es educativo (para
+mostrar cómo eran la flora y fauna de la zona), uso que la licencia permite
+sin restricción. Si en el futuro el proyecto pasara a ser comercial, este
+modelo puntual debería reemplazarse por uno con licencia comercial o por el
+modelo alternativo de abajo.
 
 ------------------------------------------------------------------------------
 Carpincho (Hydrochoerus hydrochaeris) — modelo alternativo, NO activo todavía

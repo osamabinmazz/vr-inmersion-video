@@ -69,13 +69,14 @@ Smoke test (recorrido + consola) antes y después de cada cambio:
 existente y ajeno a este trabajo.
 
 ------------------------------------------------------------------------------
-5. LICENCIA — DECISIÓN PENDIENTE DEL USUARIO
+5. LICENCIA — CONFIRMADO: PROYECTO EDUCATIVO, COMPATIBLE CON CC-BY-NC-4.0
 ------------------------------------------------------------------------------
-CC-BY-NC-4.0 = No Comercial. Válido si el proyecto es educativo/cultural/
-demo; si en algún momento se vuelve comercial, este modelo puntual no sirve
-y hay que reemplazarlo (ver punto 6) o conseguir una licencia comercial del
-mismo autor. Se agregó CREDITS_MODELOS_3D.txt con la atribución que exige la
-licencia (autor + fuente + licencia), independientemente de qué se decida.
+El usuario confirmó: el proyecto es educativo (mostrar cómo eran la flora y
+fauna de la zona), no comercial. CC-BY-NC-4.0 permite ese uso sin
+restricción — el carpincho animado de Rectus se queda como modelo activo, no
+hace falta reemplazarlo por el alternativo de la sección 6. Se agregó
+CREDITS_MODELOS_3D.txt con la atribución que igual exige la licencia (autor +
+fuente + licencia).
 
 ------------------------------------------------------------------------------
 6. SEGUNDO MODELO RECIBIDO — CANDIDATO ALTERNATIVO (NO ACTIVO)
@@ -149,9 +150,11 @@ ajustar nada.
 ------------------------------------------------------------------------------
 9. QUÉ FALTA
 ------------------------------------------------------------------------------
-- Confirmación del usuario: ¿proyecto comercial o no? Define si el carpincho
-  animado (NC) se mantiene o se reemplaza por el estático (BY).
 - Ñandú y tero siguen usando la geometría procedural con textura (Fase 7):
   no llegó todavía ningún modelo real para esas dos especies.
+- Decisión de alcance abierta: qué hacer con las especies nuevas de las que
+  ya llegaron modelos proxy (venado, zorro, gato montés, chajá, garza,
+  lagarto, lobito de río, lobo marino, mulita, sapito, tortuga) — cada una
+  necesita su propio sistema de comportamiento (Fase 6), no solo el modelo.
 
 ==============================================================================
