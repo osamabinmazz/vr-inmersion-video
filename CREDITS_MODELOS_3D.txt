@@ -191,4 +191,51 @@ se ve bien desde los ángulos de cámara habituales (de costado/frente a la
 altura de los ojos) pero no es taxonómicamente exacto de cerca o desde
 abajo.
 
+------------------------------------------------------------------------------
+Mulita (Dasypus hybridus) — modelo real, en uso activo
+------------------------------------------------------------------------------
+Título:    "Armadillo(Non-Commercial)"
+Autor:     Nyilonelycompany (https://sketchfab.com/Nyilonelycompany)
+Fuente:    https://sketchfab.com/3d-models/armadillonon-commercial-5c80d7841d924059b8802f5c91af33ae
+Licencia:  CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/) —
+           mismo caso que el carpincho/venado: uso educativo confirmado,
+           compatible.
+Uso:       viewer/public/assets/models/mulita.glb (no se commitea, igual
+           criterio que el resto de assets pesados).
+Cambios:   material ya en pbrMetallicRoughness estándar (sin extensión
+           legacy, no requirió conversión). Optimizado con gltf-transform
+           (resize de texturas a 1024px, recompresión a WebP) de 18,66 MB
+           a 3,69 MB, sin tocar geometría (90.816 triángulos, 1 malla, sin
+           rig ni animación). Escala: el archivo mide ~1,42 m de largo
+           (hocico a punta de cola) tal cual viene -- una mulita real mide
+           ~0,40-0,55 m; corregido con scale:0.35 en el código, verificado
+           con Box3 (dio 0,50 m, dentro del rango real al primer intento).
+
+Especie real: solitaria y de hábitos mayormente crepusculares, así que NO
+se aplicó el criterio de "duplicar en pareja/manada" usado para las otras
+especies (carpincho/ñandú/tero/venado) -- se pusieron 2 individuos solo
+para dar más chance de encontrarlo en el recorrido, no porque la especie
+forme grupos.
+
+Sin límite honesto que declarar: a diferencia de los otros casos de esta
+lista, este SÍ es un modelo de la especie correcta (Dasypus hybridus /
+mulita), no una aproximación de otra especie.
+
+------------------------------------------------------------------------------
+Armadillo (candidato alternativo, NO usado) — descartado
+------------------------------------------------------------------------------
+Título:    "Armadillo"
+Autor:     University of Dundee Museum Collections (https://sketchfab.com/uod_museums)
+Fuente:    https://sketchfab.com/3d-models/armadillo-94b95b604da044c099b608f4af2d6964
+Licencia:  CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+Motivo de descarte: escaneo de museo mucho más pesado (592.306 triángulos
+en 7 mallas) y con un error de escala severo en el archivo tal cual llegó
+(medía ~627 m de largo, claramente una unidad de exportación mal
+interpretada) -- se optó directamente por el modelo de Nyilonelycompany
+de arriba, que ya venía en una escala razonable y con un tercio de los
+triángulos. No se investigó más a fondo si el error de escala del archivo
+de Dundee era corregible de forma simple, dado que el otro candidato ya
+cumplía sin ese problema.
+
 ==============================================================================

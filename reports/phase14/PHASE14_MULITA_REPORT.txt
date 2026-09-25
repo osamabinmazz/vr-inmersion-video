@@ -1,0 +1,109 @@
+ZAPICÁN — FASE 14 · MULITA: SEGUNDA ESPECIE NUEVA (Dasypus hybridus)
+==============================================================================
+Snapshot: ZAPICAN_v090_mulita_real (antes: v089_tero_real, Fase 13).
+
+El usuario subió dos modelos candidatos de armadillo sin pedido explícito
+adicional más allá de "Continua" -- se investigó, comparó y se integró el
+mejor de los dos, siguiendo el patrón ya establecido para agregar una
+especie nueva (mismo criterio que el venado, Fase 10).
+
+------------------------------------------------------------------------------
+1. DOS CANDIDATOS, UNA DECISIÓN CLARA
+------------------------------------------------------------------------------
+  - "Armadillo" (University of Dundee Museum Collections, CC-BY-NC-SA-4.0):
+    592.306 triángulos en 7 mallas, escaneo de museo. Medía ~627 m de largo
+    tal cual llegó -- un error de escala severo (verificado con Box3 antes
+    de asumir nada, mismo método que en fases anteriores).
+  - "Armadillo(Non-Commercial)" (Nyilonelycompany, CC-BY-NC-4.0): 90.816
+    triángulos, 1 malla, 1 material, sin rig ni animación. Medía ~1,42 m
+    tal cual llegó -- grande pero sin el error de escala severo del otro.
+
+Se descartó el primero sin más investigación (era claramente más pesado Y
+tenía un problema de escala que corregir) y se avanzó directamente con el
+segundo, que además renderizó con muy buena calidad desde la primera
+prueba (caparazón con bandas, hocico, orejas, cola, detalle de textura
+fotográfica).
+
+------------------------------------------------------------------------------
+2. INTEGRACIÓN COMO ESPECIE NUEVA
+------------------------------------------------------------------------------
+Mulita (Dasypus hybridus): armadillo chico de campo, solitario y de hábitos
+mayormente crepusculares. A diferencia de las cuatro especies ya
+establecidas (carpincho, ñandú, tero, venado), la mulita real NO forma
+pareja ni manada -- así que no se aplicó el criterio de "duplicar" usado en
+la Fase 12 para esas cuatro. Se pusieron 2 individuos de todos modos, no
+por comportamiento social sino para que haya más chance real de encontrarla
+en el recorrido (documentado así en el código y en CREDITS, con la misma
+honestidad que el resto del proyecto).
+
+Geometría procedural de respaldo (makeMulita()): deliberadamente mínima --
+caparazón capsular achatado, hocico cónico en un pivote propio, cola
+cónica, y 4 patas cortas SIN articular (a diferencia del venado/ñandú, que
+sí tienen sistemas de piernas completos). Esto es una decisión consciente:
+el modelo real ya llegó con muy buena calidad desde el principio, así que
+el fallback procedural solo necesita existir por seguridad (si el archivo
+no carga), no verse bien por su cuenta.
+
+Máquina de estados (MULITA_STATES): FORAGE (hociquea de lado a lado, su
+estado más común) / DIG (hocico hacia abajo, escarbando) / ALERT (hocico
+arriba brevemente) / SHORT_WALK (desplazamiento corto). Sin animación de
+patas: la única articulación es el pivote del hocico (headPivot).
+
+Ubicación: scatterPositionsSpaced en la llanura abierta (radio 5-12,
+alejado del agua/marcadores 3,0 m, espaciado de otras especies 4,0 m) --
+mismo criterio de la Fase 12 para que no coincida con el terreno de otras
+especies por casualidad.
+
+------------------------------------------------------------------------------
+3. OPTIMIZACIÓN Y ESCALA
+------------------------------------------------------------------------------
+Material ya en pbrMetallicRoughness estándar -- no requirió conversión de
+extensión legacy (a diferencia del venado/ñandú). Optimizado con
+gltf-transform (texturas a WebP 1024px, geometría sin comprimir) de 18,66
+MB a 3,69 MB.
+
+Escala: el archivo mide ~1,42 m de largo (hocico a punta de cola) tal cual
+viene -- una mulita real mide ~0,40-0,55 m. Se aplicó scale:0.35, y la
+medición en vivo con Box3 dio 0,50 m -- dentro del rango real al primer
+intento, sin necesidad de ajustar una segunda vez (mismo resultado que el
+tero en la Fase 13). Contacto con el suelo: ~0,01 mm de separación,
+prácticamente exacto.
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores nuevos de
+consola (mismo warning de timing de texturas ya documentado). Verificación
+visual en escena aislada limpia (mismo patrón que el nido y el tero):
+caparazón, hocico, orejas y cola reconocibles, patas correctamente
+apoyadas en el piso, tamaño coherente con la especie real.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — v089 (sin mulita, Fase 13) vs v090 (mulita real, 2 individuos)
+------------------------------------------------------------------------------
+                          v089                v090
+  Triángulos cargados     839.054           1.021.722   (+182.668, ≈90,8k×2)
+  Mallas                    504                 519      (+15)
+  VRAM estimada           514,6 MB            541,6 MB   (+27,0 MB, textura
+                                                          WebP 1024² compartida
+                                                          entre los 2 individuos,
+                                                          con mipmaps)
+
+Cero errores nuevos de consola. El incremento de triángulos coincide
+exactamente con lo esperado (2 × 90.816 tris del modelo real). El total
+acumulado de la escena supera el millón de triángulos por primera vez en
+el proyecto -- sigue siendo manejable para VR de gama media/alta, pero es
+la referencia a tener en cuenta antes de sumar más especies pesadas sin
+volver a medir.
+
+------------------------------------------------------------------------------
+6. QUÉ FALTA
+------------------------------------------------------------------------------
+De la lista original de especies proxy recibidas (venado, zorro, gato
+montés, chajá, garza, lagarto, lobito de río, lobo marino, mulita, sapito,
+tortuga), quedan: zorro, gato montés, chajá, garza, lagarto, lobito de río,
+lobo marino, sapito, tortuga -- cada una necesitaría su propio sistema de
+comportamiento (máquina de estados + colocación ecológica), no solo el
+modelo.
+
+==============================================================================
