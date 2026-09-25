@@ -129,4 +129,66 @@ costo porque el asset se usa una sola vez (no se duplica por individuo,
 a diferencia de la fauna). Material con extensión KHR_materials_unlit,
 soportada nativamente por Three.js — no requirió conversión.
 
+------------------------------------------------------------------------------
+Tero (Vanellus chilensis) — modelo adaptado, en uso activo
+------------------------------------------------------------------------------
+Título:    "Common Sandpiper"
+Autor:     shafee360 (https://sketchfab.com/shafee360)
+Fuente:    https://sketchfab.com/3d-models/common-sandpiper-27a8cc0c8ca240448f73fec00d5cf40b
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+IMPORTANTE — especie distinta: es un playerito/andarríos chico (Actitis
+hypoleucos, ave playera del hemisferio norte), no un tero (Vanellus
+chilensis, ave de campo sudamericana). Sin rig ni animación. Se usa como
+base porque su anatomía general de ave zancuda de patas y pico finos era
+la más adaptable de las opciones gratis encontradas.
+
+Cambios geométricos (a pedido explícito del usuario, "patas un poco más
+largas; cuerpo un poco más redondeado; cuello apenas más marcado; copete
+fino"), aplicados con un script propio sobre las posiciones de vértice del
+archivo original (@gltf-transform/core), no en Blender:
+  1) Patas: la malla del cuerpo ("main") incluye también las patas -- se
+     identificó la franja de altura correspondiente (por debajo del 40%
+     de la altura total) y se la estiró 35% verticalmente, trasladando
+     todo lo que queda por encima (torso, cuello, cabeza, y los meshes
+     separados de pico/ojos/cola) hacia arriba en la misma cantidad para
+     que sigan encastrando con el torso ya estirado. 2) Torso: ensanchado
+     9% en el plano horizontal para un contorno más redondeado. 3) Cuello:
+     angostado 12% en la franja entre el torso y la cabeza para marcar más
+     la transición. 4) Copete: el modelo no trae uno -- se agregó como
+     geometría procedural aparte en el código (un cono fino oscuro sobre
+     la cabeza), no en el archivo .glb, siguiendo el mismo criterio que
+     las astas del venado hero (Fase 10).
+Sin recálculo de normales tras el estirado/ensanchado (cambios "un poco",
+moderados): a la distancia de cámara del proyecto no se notan artefactos
+de sombreado, pero es una simplificación consciente frente a remodelar en
+un programa 3D real.
+
+Cambios de color (a pedido, patrón de tero: "pecho/garganta negros,
+vientre blanco, cabeza gris, patas rojizas, pico rojizo con punta
+oscura"): el mesh del pico no traía textura (color plano casi negro) -- se
+le agregaron vertex colors (COLOR_0) con un degradé rojizo en la base y
+oscuro en la punta, según la posición de cada vértice a lo largo del pico.
+El mesh del cuerpo SÍ trae una textura fotográfica (patrón moteado
+gris-pardo realista, que se dejó sin tocar en el dorso/alas porque ya se
+parece bastante al plumaje dorsal real del tero) -- para pecho/cabeza/
+vientre/patas se generó una máscara por región rasterizando cada triángulo
+UV según la altura y la normal del vértice de origen (ventral vs dorsal vs
+frontal), y se recoloreó cada región preservando la luminosidad original
+de la textura (mismo criterio que el venado/ñandú) para no perder el
+sombreado de base. El ojo y la cola quedaron con su color original (negro),
+que ya es correcto para la especie.
+
+Optimización: gltf-transform (texturas a WebP 1024px, geometría sin
+comprimir para no arriesgar los vertex colors del pico) de 2,84 MB a
+306 KB.
+
+LÍMITE HONESTO: sigue siendo un playerito con maquillaje geométrico y de
+color, no un tero remodelado a mano. El pico es recto y fino (el del tero
+real es más corto y romo), y el "vientre blanco" es parcial porque la
+región ventral de este playerito es angosta comparada con la de un tero;
+se ve bien desde los ángulos de cámara habituales (de costado/frente a la
+altura de los ojos) pero no es taxonómicamente exacto de cerca o desde
+abajo.
+
 ==============================================================================

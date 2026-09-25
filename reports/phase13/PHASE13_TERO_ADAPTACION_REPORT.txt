@@ -1,0 +1,154 @@
+ZAPICÁN — FASE 13 · TERO: ADAPTACIÓN GEOMÉTRICA Y DE COLOR DESDE UN MODELO REAL
+==============================================================================
+Snapshot: ZAPICAN_v089_tero_real (antes: v088_rhea_redistribucion_nido, Fase
+11+12). Continúa el arco de "subir a modelo real" para la última de las
+cuatro especies principales (carpincho, venado, ñandú, y ahora tero).
+
+Pedido explícito del usuario, junto con la subida del modelo base (un
+playerito/andarríos, "Common Sandpiper"):
+"A este debemos Modificar: patas un poco más largas; cuerpo un poco más
+redondeado; cuello apenas más marcado; copete fino; colores de tero:
+pecho/garganta negros, vientre blanco, cabeza gris, patas rojizas, pico
+rojizo con punta oscura."
+
+------------------------------------------------------------------------------
+1. EL MODELO BASE Y POR QUÉ NO ES UN TERO
+------------------------------------------------------------------------------
+"Common Sandpiper" (shafee360, Sketchfab, CC-BY-4.0): 5.530 triángulos en 4
+mallas (pico, ojos, cuerpo+patas, cola), sin rig ni animación. Es un
+playerito/andarríos (Actitis hypoleucos, ave playera del hemisferio norte),
+no un tero (Vanellus chilensis, ave de campo sudamericana) -- pero su
+anatomía de zancuda de patas y pico finos lo hace un punto de partida
+razonable para adaptar, a diferencia de las otras especies proxy de este
+proyecto (avestruz→ñandú) donde la silueta base ya era muy distinta.
+
+A diferencia de los casos anteriores (venado, ñandú), esta vez el pedido no
+fue solo textura/escala: incluyó cambios de FORMA (patas, cuerpo, cuello,
+copete). Blender no está disponible en este entorno (se probó: "blender:
+command not found"), así que no se pudo usar el pipeline bpy ya existente
+en el repo (tools/blender_model_enhancer, tools/ultra_3d_reconstructor,
+construido en fases anteriores). En su lugar, los cambios geométricos se
+hicieron con un script propio sobre las posiciones de vértice del archivo,
+usando @gltf-transform/core desde Node -- sin editor 3D interactivo de por
+medio.
+
+------------------------------------------------------------------------------
+2. CAMBIOS DE GEOMETRÍA
+------------------------------------------------------------------------------
+El mesh "main" (cuerpo) incluye TAMBIÉN las patas -- no vienen separadas en
+mallas distintas. Se identificó la banda de altura de las patas (por debajo
+del 40% de la altura total del modelo) mediante un histograma de posiciones
+Y de sus 1.778 vértices.
+
+  1) Patas más largas: la banda de las patas se estiró 35% verticalmente
+     (factor 1.35), y todo lo que queda por encima -- torso, cuello,
+     cabeza, y los meshes separados de pico/ojos/cola -- se trasladó hacia
+     arriba la misma distancia agregada (13,3 cm en el modelo sin escalar)
+     para que sigan encastrando en el punto donde terminan las patas.
+  2) Cuerpo más redondeado: la banda del torso (por encima de las patas,
+     por debajo del cuello) se ensanchó 9% en el plano horizontal (X/Z).
+  3) Cuello más marcado: la banda entre el torso y la cabeza se angostó
+     12% en el plano horizontal, para crear más contraste de silueta entre
+     cuerpo y cabeza.
+  4) Copete fino: el modelo no trae ninguno. Se agregó como geometría
+     PROCEDURAL aparte en el código de la escena (un cono fino y oscuro
+     sobre la parte trasera de la cabeza), no en el archivo .glb -- mismo
+     criterio que las astas del venado hero (Fase 10): un detalle de
+     especie que no vale la pena bakear en el asset porque es barato de
+     generar en tiempo real y no depende de la malla base.
+
+No se recalcularon las normales tras estirar/ensanchar la geometría (los
+cambios pedidos son moderados, "un poco"/"apenas") -- a la distancia de
+cámara típica del proyecto no se notan artefactos de sombreado en las
+capturas, pero es una simplificación consciente frente a remodelar en un
+programa 3D real con recálculo de normales suaves.
+
+------------------------------------------------------------------------------
+3. CAMBIOS DE COLOR
+------------------------------------------------------------------------------
+El pico no traía textura (color plano casi negro, sin foto ni detalle) --
+se le agregaron VERTEX COLORS (atributo COLOR_0), con un degradé rojizo en
+la base y oscuro en el último 45% hacia la punta, calculado a partir de la
+posición Z de cada vértice del pico. Esto resuelve "pico rojizo con punta
+oscura" con precisión, sin depender de una textura.
+
+El cuerpo SÍ trae una textura fotográfica realista (patrón moteado
+gris-pardo de plumaje, con sombreado propio) -- en vez de reemplazarla
+entera, se generó una MÁSCARA POR REGIÓN: para cada triángulo de la malla
+se clasificó su origen (patas / cabeza / pecho-garganta / vientre / dorso)
+según la altura del vértice y la dirección de su normal (frontal = pecho,
+hacia abajo = vientre, el resto se deja como dorso/alas -- que ya se parece
+bastante al plumaje dorsal real del tero, sin necesidad de tocarlo), y esa
+clasificación se rasterizó en el espacio UV de la textura (barrido de cada
+triángulo con coordenadas baricéntricas). El recolor final preserva la
+luminosidad original de cada píxel (mismo criterio que el venado y el
+ñandú) para no perder el sombreado/detalle de la textura base, solo cambia
+el tono hacia el color de la región de tero correspondiente. El ojo y la
+cola quedaron con su color original (negro), ya correcto para la especie.
+
+------------------------------------------------------------------------------
+4. ESCALA — CORREGIDA AL PRIMER INTENTO
+------------------------------------------------------------------------------
+El modelo mide ~1,04 m de alto tal cual viene (tamaño de playerito muy
+agrandado, common sandpiper real mide ~20 cm) -- verificado con Box3 antes
+de asumir nada, mismo método que en fases anteriores. El tero real mide
+~32-38 cm: se aplicó scale:0.31, y la medición en vivo dio 32,8 cm de alto
+-- coincide con el rango real sin necesidad de ajustar una segunda vez.
+Contacto con el suelo verificado: ~2 mm de separación, dentro del margen ya
+aceptado para el resto de la fauna.
+
+------------------------------------------------------------------------------
+5. OPTIMIZACIÓN
+------------------------------------------------------------------------------
+gltf-transform (texturas a WebP 1024px; geometría SIN comprimir, a
+propósito, para no arriesgar los vertex colors recién agregados al pico):
+de 2,84 MB a 306 KB.
+
+------------------------------------------------------------------------------
+6. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores nuevos de
+consola (mismo warning de timing de texturas ya documentado). Verificación
+visual: además de las capturas dentro de la escena (donde el tero quedó
+parcialmente tapado por arbustos procedurales densos en su posición de
+spawn -- el mismo problema de oclusión por vegetación ya documentado para
+QC_RHEA, no un defecto de este trabajo), se renderizó el modelo real ya
+desplegado en una escena aislada limpia (mismo patrón que la vista previa
+del nido, Fase 12) para confirmar sin ambigüedad: patas largas y rojizas
+correctamente apoyadas en el piso, cuerpo redondeado, cuello marcado,
+cabeza gris, pecho/garganta negros, pico rojizo con punta oscura, y el
+copete fino visible en la nuca.
+
+------------------------------------------------------------------------------
+7. RENDIMIENTO — v088 (sin tero real, Fase 12) vs v089 (tero real, 4 individuos)
+------------------------------------------------------------------------------
+                          v088                v089
+  Triángulos cargados     816.926             839.054   (+22.128, ≈5,5k×4)
+  Mallas                    485                 504      (+19)
+  VRAM estimada           498,1 MB            514,6 MB   (+16,5 MB, textura
+                                                          WebP 1024² compartida
+                                                          entre los 4 individuos,
+                                                          con mipmaps)
+
+Cero errores nuevos de consola en la medición. Pico de CPU del barrido de
+360° similar al de la Fase 12 (~4,16 s en un frame puntual) -- mismo ruido
+de compilación de shaders on-demand de SwiftShader ya documentado, no
+atribuible a este cambio puntual (4 aves de 5.500 triángulos no puede
+explicar un pico de ese tamaño por sí solo).
+
+------------------------------------------------------------------------------
+8. LÍMITE HONESTO
+------------------------------------------------------------------------------
+Sigue siendo un playerito con maquillaje geométrico y de color, no un tero
+remodelado a mano en un programa 3D. El pico quedó recto y fino (el del
+tero real es más corto y algo más romo); el "vientre blanco" es parcial
+porque la región ventral de este playerito es angosta comparada con la de
+un tero real. Se ve convincente desde los ángulos de cámara habituales del
+proyecto (de costado o de frente, a la altura de los ojos) pero no
+resistiría un primer plano muy cercano desde abajo. Las normales sin
+recalcular tras el estirado pueden dar algún sombreado ligeramente menos
+suave en las zonas de transición (unión pata-cuerpo, cuello) comparado con
+una malla remodelada a mano -- no se detectó de forma notoria en las
+capturas de este informe.
+
+==============================================================================
