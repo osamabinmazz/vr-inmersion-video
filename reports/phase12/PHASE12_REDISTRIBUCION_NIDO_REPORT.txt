@@ -1,0 +1,127 @@
+ZAPICÁN — FASE 12 · REDISTRIBUCIÓN DE FAUNA Y NIDO AMBIENTAL
+==============================================================================
+Snapshot: ZAPICAN_v088_rhea_redistribucion_nido (mismo snapshot que la Fase
+11 — ver ese informe, ambos trabajos se completaron antes de guardar el
+primer snapshot posterior a v087_venado_real).
+
+Pedido explícito del usuario, junto con la subida de un nuevo modelo (nido
+con huevos): "Colócalo cerca del nandu y redistribución los animales mas
+naturalmente notan cercanos entre ellos duplicar aquellos que andan en
+pareja o en manada." Tres pedidos en uno: (1) ubicar el nido nuevo cerca
+del ñandú, (2) espaciar mejor las distintas especies entre sí, (3) subir la
+población de las especies que naturalmente andan en pareja o en manada.
+
+------------------------------------------------------------------------------
+1. ESPACIADO ENTRE ESPECIES — scatterPositionsSpaced()
+------------------------------------------------------------------------------
+El problema real no era que cada especie se agrupara mal entre sus propios
+individuos (eso ya funciona bien, es cosa de cada scatterPositions/
+waterOutlinePoint) sino que dos especies DISTINTAS podían terminar cerca por
+pura coincidencia, ya que cada una elegía su posición sin saber de las
+demás.
+
+Se agregó un registro compartido, `faunaHomes` (array de {x, z, species}),
+y una función `scatterPositionsSpaced(count, rMin, rMax, minDistFromPOI,
+minDistFromOtherSpecies, species)` que envuelve la función `scatterPositions`
+ya existente: pide una posición candidata, y la descarta (reintentando)
+si cae a menos de `minDistFromOtherSpecies` de un hogar de OTRA especie ya
+registrado. No se tocó `scatterPositions` en sí (la usan también vegetación
+y mariposas) para no arriesgar ningún efecto colateral ahí.
+
+Aplicado a ñandú, tero y venado (los tres que ya usaban `scatterPositions`
+simple); el carpincho sigue con `waterOutlinePoint` (atado al borde de la
+laguna, no compite por el mismo terreno abierto) pero también registra su
+posición en `faunaHomes` para que las otras especies lo esquiven a él.
+
+------------------------------------------------------------------------------
+2. POBLACIÓN — ESPECIES QUE ANDAN EN PAREJA O EN MANADA
+------------------------------------------------------------------------------
+Subidas a pedido ("duplicar aquellos que andan en pareja o en manada"),
+según el comportamiento social real de cada especie:
+
+  Especie      Antes   Ahora   Motivo
+  Carpincho      2       3     vive en grupos familiares, casi nunca solo
+  Ñandú          2       3     anda en grupos chicos fuera de temporada de cría
+  Tero           3       4     territorial en pareja -- ahora son dos parejas
+  Venado         2       3     se ve en grupos chicos, no solo de a 2
+
+------------------------------------------------------------------------------
+3. NIDO CON HUEVOS — NUEVO DETALLE AMBIENTAL JUNTO AL ÑANDÚ
+------------------------------------------------------------------------------
+El usuario subió un modelo real de un nido con huevos (CC0, ver
+CREDITS_MODELOS_3D.txt) para agregar cerca del ñandú. Es en realidad un
+escaneo de un nido de pato barcino (Anas zonorhyncha), no de ñandú -- no
+existe ningún escaneo gratis de nido de ñandú, así que se usa igual por
+afinidad temática, documentado con la misma honestidad que el resto de los
+casos de especie distinta (ver CREDITS).
+
+Optimización (gltf-transform, mismo pipeline de siempre):
+  - Original: 27,63 MB, 545.472 triángulos, 11 mallas, texturas JPEG
+    (184 KB + 1,1 MB), material con KHR_materials_unlit (soportado nativo
+    por Three.js, sin necesidad de conversión).
+  - Optimizado: 8,44 MB, 175.319 triángulos, texturas 1024px WebP.
+  - Piso práctico de simplificación: se probaron varios ajustes de
+    `--simplify-error` (0,006 y 0,03) y una cadena explícita weld+simplify
+    (ratio 0,04, error 0,5) -- todos convergen a ~175.000-175.300
+    triángulos sin importar cuán agresivo el parámetro. Conclusión: es un
+    límite topológico real del escaneo fotogramétrico (geometría no-
+    manifold/desconectada -- muchas ramitas como islas separadas que el
+    colapso de aristas estándar no puede fusionar más sin remallado
+    completo), no un problema de configuración. Se aceptó ese costo porque
+    el asset se carga UNA sola vez (no se duplica por individuo, a
+    diferencia de la fauna) -- una previsualización aislada confirmó que
+    es un escaneo genuinamente reconocible y de buena calidad, con detalle
+    suficiente para justificar el costo como pieza "hero" puntual.
+
+Integración en código: carga estática con GLTFLoader directo (no
+tryUpgradeToModel, que es el mecanismo de reemplazo específico de fauna con
+comportamiento) -- el nido no tiene animación ni máquina de estados,
+solo se posiciona una vez cerca de `rheaPositions[0]` (el ñandú hero) con
+un desplazamiento aleatorio corto (1,3-1,7 m) para que no quede encimado
+con el ave. Fallback silencioso si el archivo no está, mismo criterio que
+el resto de los modelos reales.
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild antes de correr en navegador. Smoke test:
+cero errores nuevos de consola. Capturas QC confirman: el nido aparece
+visiblemente cerca del ñandú hero sin superponerse a él, las distintas
+especies ya no caen tan cerca entre sí en las mismas tomas donde antes se
+las veía agrupadas, y las poblaciones nuevas (3 carpinchos, 3 ñandúes, 4
+teros, 3 venados) renderizan sin errores.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — Fase 11 (2 ñandúes reales, sin redistribuir) vs Fase 12
+   (3 carpinchos + 3 ñandúes + 4 teros + 3 venados + nido)
+------------------------------------------------------------------------------
+                          Fase 11             Fase 12
+  Triángulos cargados     552.211             816.926   (+264.715)
+  Mallas                    423                 485     (+62)
+  VRAM estimada           473,9 MB            498,1 MB  (+24,2 MB)
+
+Cero errores nuevos de consola. El aumento de triángulos es esperado: +1
+carpincho (~6.268 tris), +1 ñandú real (~63.192 tris), +1 tero y +1 venado
+procedurales (bajo costo, geometría propia liviana), y el nido (175.319
+tris, la porción más grande del incremento por ser un escaneo fotogramétrico
+de alta densidad, cargado una sola vez). El barrido de 360° dio un pico de
+CPU de 4180 ms en un frame puntual (yaw=45°) -- coherente con el ruido de
+arranque de shaders de SwiftShader ya documentado en fases anteriores
+(coincide con el ángulo donde por primera vez entran en cuadro el nido y
+varios individuos nuevos a la vez, generando compilación de shaders on-
+demand ese frame, no un problema sostenido de la escena).
+
+------------------------------------------------------------------------------
+6. VERIFICACIÓN DE POSICIÓN DEL NIDO
+------------------------------------------------------------------------------
+Confirmado por inspección directa de la escena en tiempo de ejecución (no
+solo por lectura de código): el nido cargó correctamente (petición de red
+a nido.glb con status 200, geometría real de 175.319 triángulos presente
+en la escena) y su posición mundial quedó a ~1,53 m del ñandú hero
+(rheaPositions[0]) -- dentro del rango de desplazamiento buscado (1,3-1,7
+m). Capturas confirman ambos objetos en el mismo cuadro; el detalle fino
+del nido queda parcialmente tapado por arbustos procedurales cercanos en
+algunas tomas, un efecto de oclusión de la vegetación densa ya presente en
+el resto del bioma (no un defecto de esta integración).
+
+==============================================================================

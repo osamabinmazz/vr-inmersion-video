@@ -64,4 +64,69 @@ Cambios:   1) convertido de KHR_materials_pbrSpecularGlossiness (extensión
            saturación) preservando el detalle de la textura original. Las
            astas (material "Deer_Antler") no se tocaron.
 
+------------------------------------------------------------------------------
+Ñandú (Rhea americana) — modelo adaptado, en uso activo
+------------------------------------------------------------------------------
+Título:    "Ostrich（Struthio camelus）"
+Autor:     Stephengury (https://sketchfab.com/Stephengury)
+Fuente:    https://sketchfab.com/3d-models/ostrichstruthio-camelus-7c1ba7c48a9c485b848ae4d48487a423
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+IMPORTANTE — especie distinta, no un ñandú real: es un AVESTRUZ (Struthio
+camelus, África), no un ñandú (Rhea americana, Sudamérica). Se usa como
+aproximación visual porque no se encontró ningún modelo gratis de ñandú a
+la altura de calidad de los otros (ver informe de Fase 11: se agotaron
+Sketchfab, TurboSquid, CGTrader, Free3D, Sloyd.ai). La única opción de
+ñandú real y buena calidad encontrada es paga (Nyilonelycompany, Fab.com).
+
+Cambios: 1) convertido de KHR_materials_pbrSpecularGlossiness a
+pbrMetallicRoughness estándar (gltf-transform metalrough). 2) textura
+original 8192×8192 JPEG (18,8 MB) — resize a 1024×1024 + WebP, de 20,66 MB
+el archivo completo a 1,63 MB. 3) recolor: el plumaje original es blanco y
+negro (típico del macho de avestruz) — corregido con una curva tonal
+asimétrica (sombras casi sin tocar, brillos muy comprimidos) para llevar
+ambos extremos a un gris-pardo parejo, más parecido al plumaje uniforme
+real del ñandú. Iterado dos veces a pedido del usuario ("aun más en las
+partes blancas") hasta que el contraste quedó parejo. 4) escala: el
+archivo mide ~2,18 m de alto tal cual viene (tamaño real de avestruz); el
+ñandú real mide ~1,5-1,7 m — corregido con scale:0.72 en el código.
+Estático: no trae rig ni animación (a diferencia de carpincho/venado).
+
+LÍMITE HONESTO: sigue siendo un avestruz por debajo del maquillaje — pico,
+proporción de cuello/cabeza, y sobre todo las patas (2 dedos, el ñandú
+tiene 3) no se pueden corregir solo con textura/escala. Sirve como mejora
+visual sobre la versión procedural pero no es taxonómicamente exacto.
+
+------------------------------------------------------------------------------
+Nido con huevos (detalle ambiental junto al ñandú) — modelo real, en uso activo
+------------------------------------------------------------------------------
+Título:    "CC0 カルガモの巣と卵, Anas zonorhyncha" (nido y huevos de pato
+           barcino)
+Autor:     ffish.asia / floraZia.com
+Fuente:    https://sketchfab.com/3d-models/cc0-anas-zonorhyncha-5c84b6ca2878423da99ea6ce806e6e00
+Licencia:  CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/) — de
+           dominio público, no exige atribución; se documenta igual por
+           transparencia.
+Uso:       viewer/public/assets/models/nido.glb (no se commitea, igual
+           criterio que el resto de assets pesados). Cargado directo con
+           GLTFLoader (sin tryUpgradeToModel: es un objeto estático, no
+           fauna con comportamiento), ubicado cerca del ñandú hero.
+
+IMPORTANTE — especie distinta: es un escaneo 3D de un nido de pato barcino
+(Anas zonorhyncha, especie asiática), no de ñandú. No se encontró ningún
+escaneo gratis de nido de ñandú; se usa igual como detalle ambiental junto
+al ñandú por afinidad temática, a pedido del usuario ("colócalo cerca del
+nandu").
+
+Cambios: re-exportado con gltf-transform (resize de texturas a 1024px,
+recompresión a WebP, sin comprimir geometría) de 27,63 MB a 8,44 MB.
+Triángulos: 545.472 → 175.319 — no fue posible bajar más ese número pese a
+varios intentos con distintos parámetros de simplificación (ver informe de
+Fase 12): el modelo es un escaneo fotogramétrico con geometría no-manifold/
+desconectada (muchas ramitas como islas separadas), lo que le pone un piso
+práctico a la simplificación estándar por colapso de aristas. Se aceptó ese
+costo porque el asset se usa una sola vez (no se duplica por individuo,
+a diferencia de la fauna). Material con extensión KHR_materials_unlit,
+soportada nativamente por Three.js — no requirió conversión.
+
 ==============================================================================

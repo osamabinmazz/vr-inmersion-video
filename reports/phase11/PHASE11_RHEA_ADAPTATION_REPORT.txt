@@ -1,0 +1,124 @@
+ZAPICÁN — FASE 11 · ÑANDÚ: BÚSQUEDA DE MODELO REAL Y ADAPTACIÓN
+==============================================================================
+Snapshot: ZAPICAN_v088_rhea_redistribucion_nido (antes: v087_venado_real,
+Fase 10 — la corrección de color del pelaje del venado, Fase 10 §6, no
+generó snapshot propio por no tener diff de código). Continúa el arco de
+"subir a modelo real" iniciado en la Fase 9 (carpincho) y Fase 10 (venado),
+esta vez para el ñandú. El mismo snapshot incluye además el trabajo de
+redistribución de fauna y nido ambiental de la Fase 12 (ver ese informe),
+ya que ambos se completaron antes de guardar el primer snapshot posterior
+al v087.
+
+------------------------------------------------------------------------------
+1. BÚSQUEDA DE MODELO REAL DE ÑANDÚ — SIN RESULTADO GRATIS AL NIVEL PEDIDO
+------------------------------------------------------------------------------
+Búsqueda exhaustiva (Sketchfab, TurboSquid, CGTrader, Free3D, Sloyd.ai —
+este último un generador de modelos por IA/texto, pero pide cuenta para
+descargar igual que todo lo demás):
+
+  - Único candidato de calidad real encontrado: "Rhea American Ostrich
+    Bird" (Nyilonelycompany — el mismo autor de un carpincho "high-detail"
+    ya mencionado en el catálogo original), 55.690 triángulos, 4K PBR
+    completo, rigged y animado. PAGO, vendido en Fab.com
+    (https://fab.com/s/a6c75de28e49), precio no verificado.
+  - Único gratis encontrado: "rhea scan" (CC-BY-SA-4.0), 898 triángulos,
+    sin rig — muy por debajo del nivel de carpincho/venado.
+  - A pedido explícito del usuario ("es de pago, necesitamos algo
+    gratuito"), se amplió la búsqueda: nada gratis específico de Rhea
+    americana con calidad aceptable existe en ninguna de las plataformas
+    revisadas.
+
+Alternativa aceptada por el usuario ("Ok, probamos 2"): usar un modelo
+gratis de AVESTRUZ (Struthio camelus) como aproximación visual, sabiendo
+que es otra especie, y adaptarlo.
+
+------------------------------------------------------------------------------
+2. EL MODELO Y SUS PROBLEMAS
+------------------------------------------------------------------------------
+"Ostrich（Struthio camelus）" — Stephengury, CC-BY-4.0, recibido completo
+(20,66 MB, un solo archivo). Inspección directa del glTF (no solo la ficha
+de Sketchfab, que decía "sin información" sobre varias cosas):
+
+  - 63.192 triángulos, 1 malla, 1 material, 1 imagen.
+  - SIN rig ni animación (a diferencia de carpincho y venado) — modelo
+    estático.
+  - Material con extensión KHR_materials_pbrSpecularGlossiness (mismo
+    problema que el venado): convertido con gltf-transform metalrough
+    antes de cualquier otra cosa.
+  - Textura de 8192×8192 en JPEG (18,8 MB, casi todo el peso del archivo)
+    — resize a 1024×1024 + WebP con el mismo pipeline de siempre: de
+    20,66 MB a 1,63 MB.
+  - Escala: a diferencia del venado (que venía en centímetros sin
+    corregir), este modelo SÍ trae la escala bien resuelta en sus propios
+    nodos (matriz de escala ~0,1716 ya aplicada) — verificado con Box3
+    antes de asumir nada: sin ningún ajuste, medía ~2,18 m de alto, un
+    tamaño de avestruz real (2,1-2,8 m), no un error de unidades.
+
+------------------------------------------------------------------------------
+3. RECOLOR — DE BLANCO Y NEGRO A GRIS PAREJO (2 iteraciones)
+------------------------------------------------------------------------------
+Diferencia con el caso del venado: ahí el problema era un solo tono
+desaturado (gris-topo en vez de pardo-rojizo). Acá el problema es un
+PATRÓN bicolor: el plumaje del avestruz macho es negro con las puntas de
+ala blancas — un ñandú real es gris-pardo bastante parejo, sin ese
+contraste. Un simple ajuste de ganancia por canal (como en el venado) no
+alcanza para borrar un patrón de dos tonos.
+
+Primera pasada: compresión de contraste simétrica hacia un punto medio
+gris-pardo (ganancia ~0,28 hacia RGB objetivo ~138,122,104) + reducción de
+saturación. Redujo bastante la diferencia (negro subió a ~gris oscuro,
+blanco bajó a ~gris claro) pero el usuario pidió explícitamente "aun más
+en las partes blancas" -- el contraste seguía siendo visible.
+
+Segunda pasada (a pedido, definitiva): curva tonal ASIMÉTRICA en vez de
+lineal simétrica -- sombras con compresión suave (factor 0,58, casi sin
+tocarlas, porque ya andaban bien), brillos con compresión fuerte (factor
+0,16, mucho más agresiva). Con esto, un blanco que antes daba ~175-190
+terminó en ~116-117 -- prácticamente en línea con el gris oscuro de las
+plumas negras (~67). Aplicado con una tabla de conversión (LUT) por canal
+sobre la imagen original, no sobre la ya corregida, para partir de datos
+limpios.
+
+------------------------------------------------------------------------------
+4. ESCALA — CORREGIDA A TAMAÑO DE ÑANDÚ REAL
+------------------------------------------------------------------------------
+El archivo no tenía el bug de unidades del venado, pero medía el tamaño
+real de un AVESTRUZ (~2,18 m), no de un ÑANDÚ (~1,5-1,7 m real). Se agregó
+scale:0.72 en tryUpgradeToModel() para corregir esto también -- no
+alcanzaba con arreglar solo el color si el bicho seguía siendo 30-40% más
+alto de lo que debería.
+
+------------------------------------------------------------------------------
+5. VALIDACIÓN
+------------------------------------------------------------------------------
+Smoke test en cada paso (material convertido, textura optimizada, recolor
+v1, recolor v2, escala corregida): cero errores nuevos de consola en
+ninguno, mismo warning de timing de texturas ya documentado. Capturas de
+la cámara QC_RHEA confirman visualmente cada mejora sucesiva. Verificado
+con Box3 que las patas apoyan bien en el piso (sin flotar), igual método
+que en la Fase 9.
+
+------------------------------------------------------------------------------
+6. RENDIMIENTO — v088 (venado recolor, sin ñandú real) vs v089 (ñandú real, 2 instancias)
+------------------------------------------------------------------------------
+                          v088                v089
+  Triángulos cargados     425.907             552.211   (+126.304, ≈63k×2)
+  Mallas                  423                 423
+  VRAM estimada           465,1 MB            473,9 MB  (+8,8 MB, 2 texturas
+                                                          WebP 1024² con
+                                                          mipmaps)
+
+Cero errores nuevos de consola en la medición.
+
+------------------------------------------------------------------------------
+7. LÍMITE HONESTO
+------------------------------------------------------------------------------
+Sigue siendo un avestruz con maquillaje, no un ñandú: pico, proporción de
+cuello, y sobre todo las patas (2 dedos en vez de los 3 del ñandú real) no
+se pueden corregir solo con textura y escala -- eso requeriría modelado
+geométrico, fuera de alcance de una adaptación de asset. Es una mejora
+visual real sobre la versión procedural (silueta, tamaño y color ahora
+coherentes con un ñandú a primera vista), pero no reemplaza un modelo
+taxonómicamente exacto si en algún momento aparece uno.
+
+==============================================================================
