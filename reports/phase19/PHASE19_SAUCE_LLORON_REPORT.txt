@@ -1,0 +1,88 @@
+ZAPICÁN — FASE 19 · SAUCE LLORÓN ORNAMENTAL (ESPECIE APARTE)
+==============================================================================
+Snapshot: ZAPICAN_v095_sauce_lloron (antes: v094_placeholder_species, Fase 18).
+
+------------------------------------------------------------------------------
+1. CONTEXTO Y DECISIÓN DEL USUARIO
+------------------------------------------------------------------------------
+El usuario compartió primero un candidato de pago ("Sauce Llorón 3D" de
+sergiosuarez2515, 15€, 2,8 millones de triángulos -- toda la escena junta
+mide ~1,84 millones, así que un solo árbol lo hubiera más que triplicado).
+Se le señaló el precio y el peso; eligió buscar una alternativa gratuita.
+
+Búsqueda en Sketchfab: se encontró "Willow Tree" de ravenwits, CC-BY-4.0,
+14.866 triángulos, con UV y PBR reales (a diferencia de todo lo integrado en
+la Fase 18) -- "for game use", hecho a propósito para uso en tiempo real.
+
+Antes de integrarlo se detectó algo importante: la escena YA tiene 4 sauces
+CRIOLLOS procedurales (Salix humboldtiana, especie NATIVA del monte
+ribereño uruguayo) con un comentario explícito en el código: "el sauce
+NATIVO... no el sauce llorón asiático". El modelo nuevo es justamente esa
+especie asiática/ornamental (Salix babylonica) que el código ya había
+descartado antes por motivos ecológicos. Se le presentó la disyuntiva al
+usuario en vez de decidir por mi cuenta, dado el objetivo educativo del
+proyecto; eligió "Agregar como especie aparte": sumar el sauce llorón como
+ejemplar ornamental distinto, sin tocar los 4 sauces criollos existentes.
+
+------------------------------------------------------------------------------
+2. INTEGRACIÓN
+------------------------------------------------------------------------------
+Optimización: gltf-transform optimize (texture-compress webp, texture-size
+1024, sin tocar geometría) de 21,35 MB a 1,73 MB. A diferencia de todos los
+assets de la Fase 18, este SÍ conserva su propia geometría UV-mapeada y
+normal map (no depende de vertex color).
+
+Escala: el archivo ya viene en unidades reales (~7,9 m alto, ~10,5 x 12 m de
+copa) -- caso raro entre los modelos de Sketchfab de este proyecto, no hizo
+falta ningún factor de corrección.
+
+Ubicación: UN ejemplar (no varios, para no repetir una silueta idéntica),
+lejos de la orilla de la laguna donde están los sauces criollos -- en la
+llanura abierta (scatterPositions, rMin 12 / rMax 20 desde el centro de la
+escena), leyendo como un ejemplar suelto plantado en el campo, uso real y
+común de la especie en el paisaje rural uruguayo. Prop inerte (gltfLoader.
+load directo, sin behavior ni InstancedMesh -- un solo espécimen no lo
+justifica).
+
+------------------------------------------------------------------------------
+3. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores/warnings nuevos de
+consola. Confirmado cargado en la escena real (búsqueda por firma de
+geometría). Captura de la ubicación real: el sauce llorón se distingue
+claramente de los árboles procedurales circundantes (mucha más definición
+visual, ramas colgantes reales) y queda espacialmente separado de la
+galería de sauces criollos junto al agua, tal como se buscaba.
+
+------------------------------------------------------------------------------
+4. RENDIMIENTO — v095 (sin sauce llorón) vs v096 (con 1 ejemplar)
+------------------------------------------------------------------------------
+                          v095            v096
+  Triángulos cargados   1.843.728       1.858.594   (+14.866, exacto --
+                                                      un solo árbol, sin
+                                                      efectos colaterales)
+  Mallas                    544             546      (+2: tronco + ramas)
+  VRAM geometría          107,7 MB        109,9 MB   (+2,2 MB)
+  VRAM texturas           483,7 MB        515,7 MB   (+32 MB -- 6 texturas
+                                                      1024² WebP descomprimidas
+                                                      en GPU, bark+branch x
+                                                      base/normal/metalRough)
+  VRAM estimada total     608,9 MB        643,1 MB   (+34,2 MB, +5,6%)
+  CPU por frame (media/máx) 4,97/10,1 ms  5,43/9,5 ms (sin cambio real,
+                                                      dentro del ruido de
+                                                      medición)
+
+Costo limpio y aislado, como se esperaba de agregar un único ejemplar
+inerte. Sin impacto medible en tiempo de CPU por frame.
+
+------------------------------------------------------------------------------
+5. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la atribución CC-BY-4.0 de
+ravenwits y la nota de distinción de especie (Salix babylonica ornamental
+vs. Salix humboldtiana nativa, ya presente en la escena). El archivo
+tree.obj subido en este mismo turno llegó vacío (76 bytes, 0 vértices, sin
+el .mtl referenciado) -- pendiente de que el usuario lo vuelva a exportar/
+subir si quiere sumar esa otra especie.
+
+==============================================================================

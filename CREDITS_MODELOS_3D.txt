@@ -428,3 +428,42 @@ pastizal_nativo,pajonal_banado}.glb (no se commitean, igual criterio que
 el resto de assets pesados).
 
 ==============================================================================
+
+------------------------------------------------------------------------------
+Sauce llorón (Salix babylonica) — ejemplar ornamental aislado, modelo real,
+en uso activo
+------------------------------------------------------------------------------
+Título:    "Willow Tree"
+Autor:     ravenwits (https://sketchfab.com/rawarg)
+Fuente:    https://sketchfab.com/3d-models/willow-tree-c9a70e8aa58941feb74487686796a786
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/) — permite
+           uso comercial con atribución.
+Uso:       viewer/public/assets/models/sauce_lloron.glb (no se commitea,
+           igual criterio que el resto de assets pesados). Ejemplar único,
+           sin comportamiento (prop inerte, gltfLoader.load directo, sin
+           InstancedMesh porque es un único espécimen).
+
+IMPORTANTE — distinción de especie: esta NO es la misma especie que los 4
+"sauces criollos" procedurales ya existentes en la escena (Salix
+humboldtiana, la especie NATIVA del monte ribereño uruguayo, inclinados
+sobre el agua). El sauce llorón (Salix babylonica) es una especie
+ORNAMENTAL/introducida (de origen asiático). El usuario evaluó primero un
+"Sauce Llorón 3D" de pago (sergiosuarez2515, 15€, 2,8 millones de
+triángulos -- descartado por precio y por peso, muy por encima del
+presupuesto de toda la escena junta) y, tras encontrarse esta alternativa
+gratuita, eligió agregarla como ESPECIE APARTE (no reemplazar los sauces
+criollos nativos) -- se la ubicó lejos de la orilla, en la llanura abierta,
+para que lea como un ejemplar suelto plantado en el campo (uso real y común
+de la especie en el paisaje rural uruguayo) y no como parte de la galería
+nativa de la costa.
+
+Cambios: gltf-transform optimize (texture-compress webp, texture-size
+1024 -- de 2048px original) sin tocar geometría (sin simplify, sin
+compress de geometría): de 21,35 MB a 1,73 MB. Geometría, UV, normal map y
+tangentes originales sin modificar (a diferencia del resto de los assets de
+esta sesión, este SÍ trae UV real, no vertex-color-only). Escala: el
+archivo ya viene en unidades reales (~7,9 m de alto, ~10,5 x 12 m de copa),
+sin bug de escala -- no hizo falta factor de corrección, caso raro entre
+los assets de Sketchfab usados en este proyecto.
+
+==============================================================================
