@@ -1,0 +1,96 @@
+ZAPICÁN — FASE 17 · MATAS DE PASTO SUPLEMENTARIAS (INSTANCING/LOD)
+==============================================================================
+Snapshot: ZAPICAN_v093_grass_tufts (antes: v092_rocks, Fase 16).
+
+Tercer y último punto del orden establecido por el usuario: "integrar los
+chunks de pasto como cobertura suplementaria, usando instancing/LOD,
+priorizando el rendimiento VR, sin reemplazar el pasto procedural
+existente".
+
+------------------------------------------------------------------------------
+1. EL MODELO Y LA DECISIÓN DE LOD
+------------------------------------------------------------------------------
+"Simple grass chunks" (3dhdscan, CC-BY-4.0) trae 8 mallas distintas en un
+solo archivo: 4 parches ya pre-dispersos/escaneados (2.681 a 52.188
+triángulos cada uno) y 3 variantes de "card" individual mucho más livianas
+(7-12 triángulos, nombradas r12_a/b/c) que comparten la misma textura --
+son la misma mata en 3 poses, pensadas para instanciarse una por una en vez
+de usar los parches ya armados.
+
+La decisión de LOD para este proyecto fue exactamente esa: usar SOLO las 3
+variantes livianas y descartar los 4 parches pesados por completo -- ni
+siquiera como opción de mayor detalle en primer plano, porque un solo
+parche de 52k triángulos ya es más pesado que la mulita completa (90k
+triángulos ÷ el escaneo entero de un animal), y el pedido fue explícito en
+priorizar rendimiento.
+
+------------------------------------------------------------------------------
+2. EXTRACCIÓN Y RECOMPOSICIÓN DE MATERIAL
+------------------------------------------------------------------------------
+Conversión de KHR_materials_pbrSpecularGlossiness a pbrMetallicRoughness
+(mismo problema recurrente de otros modelos de Sketchfab de este proyecto).
+Las 3 mallas livianas se extrajeron a un archivo nuevo con un script propio
+sobre @gltf-transform/core (creando un documento glTF nuevo desde cero y
+copiando solo los atributos/índices/material necesarios), descartando las
+otras 5.
+
+El material original venía en alphaMode BLEND (transparencia con
+degradado) -- problemático para instancing con sombras: una card con BLEND
+proyecta una sombra rectangular sólida en vez de la silueta recortada de la
+hoja. Se cambió a MASK con alphaCutoff 0,5, la técnica estándar para cards
+de follaje/pasto, dando sombras con la forma real de la hoja.
+
+Texturas de 2048px reducidas a 512px WebP (suficiente para una mata chica
+vista de cerca/media distancia, no una textura hero) -- de 1,03 MB a 63 KB.
+
+------------------------------------------------------------------------------
+3. INSTANCING Y ESCALA
+------------------------------------------------------------------------------
+3 THREE.InstancedMesh (uno por variante r12_a/b/c), 60 copias cada uno (180
+matas en total), dispersas en un radio chico (1,5-9 m desde el centro) para
+que funcionen como detalle cerca/media distancia, no como alfombra general
+-- el pasto procedural sigue cubriendo el resto del terreno sin cambios,
+tal cual pidió el usuario.
+
+Escala: los archivos miden entre ~0,98 y 2,29 m en su eje más largo tal
+cual vienen -- corregido con un factor ~0,0011 en el código (con variación
+0,7x-1,3x por instancia) para llevarlos a matas de ~0,15-0,30 m, tamaño
+real de una mata de pasto/junco chica.
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores nuevos de
+consola (mismo warning de timing de texturas ya documentado). Confirmado
+en la escena real: 3 InstancedMesh con 60 instancias cada uno. Captura de
+la cámara QC_GROUND confirma el pasto procedural existente intacto, con
+las rocas de la Fase 16 y el resto de la fauna sin cambios visuales
+inesperados.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — v092 (sin matas) vs v093 (180 matas, 3 InstancedMesh)
+------------------------------------------------------------------------------
+                          v092              v093
+  Triángulos cargados   1.009.444        1.011.264   (+1.820, ≈10×180 exacto)
+  Mallas                   518               520      (+2)
+  VRAM estimada          538,5 MB          541,1 MB   (+2,6 MB, textura WebP
+                                                       512² compartida entre
+                                                       las 180 copias)
+
+Cero errores nuevos de consola. Costo prácticamente nulo, como se esperaba
+de instanciar geometría de 7-12 triángulos -- confirma que la decisión de
+LOD (usar solo las cards livianas, descartar los parches de 18k-52k tris)
+fue la correcta para el objetivo de "priorizar rendimiento VR".
+
+------------------------------------------------------------------------------
+6. CIERRE DEL LOTE DE 3 TAREAS
+------------------------------------------------------------------------------
+Con esto se completan las 3 tareas del orden establecido por el usuario
+tras el lote de archivos sin instrucción de texto: (1) venado reemplazado
+[Fase 15], (2) rocas dispersas agregadas [Fase 16], (3) matas de pasto
+suplementarias agregadas [Fase 17]. Los 5 archivos .skp (SketchUp) del
+mismo lote siguen sin poder abrirse en este entorno (sin Blender/assimp/
+trimesh disponibles) -- si el usuario quiere ese contenido en la escena,
+haría falta exportarlos a .glb/.obj/.dae desde SketchUp.
+
+==============================================================================

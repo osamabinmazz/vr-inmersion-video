@@ -300,4 +300,38 @@ Cambios:   convertido de la carpeta scene.gltf+scene.bin+texturas a un solo
            de referencia y se varía por instancia (0,35x-1,65x) para dar
            variedad natural de tamaños al dispersarlas.
 
+------------------------------------------------------------------------------
+Matas de pasto suplementarias (detalle cerca/media distancia) — en uso activo
+------------------------------------------------------------------------------
+Título:    "Simple grass chunks"
+Autor:     3dhdscan (https://sketchfab.com/3dhdscan)
+Fuente:    https://sketchfab.com/3d-models/simple-grass-chunks-eb4f6dc9d4e3455ea3435385faf58b60
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/) — permite
+           uso comercial con atribución.
+Uso:       viewer/public/assets/models/grass_tufts.glb (no se commitea,
+           igual criterio que el resto de assets pesados). Prop inerte, 3
+           InstancedMesh (uno por variante), 60 copias cada uno, sin
+           reemplazar el pasto procedural existente (pedido explícito).
+
+El archivo original trae 8 mallas: 4 parches ya pre-dispersos/escaneados de
+2.681 a 52.188 triángulos cada uno (demasiado pesados para duplicar) y 3
+variantes de "card" individual mucho más livianas (7-12 triángulos c/u,
+"r12_a/b/c") que comparten textura y comportamiento entre sí -- son la
+misma mata de pasto en 3 poses distintas, pensadas para instanciar una por
+una en vez de usar los parches completos. La decisión de LOD para este
+proyecto fue precisamente usar SOLO esas 3 variantes livianas, descartando
+los 4 parches pesados por completo.
+
+Cambios: 1) convertido de KHR_materials_pbrSpecularGlossiness a
+pbrMetallicRoughness estándar (gltf-transform metalrough). 2) extraídas las
+3 mallas livianas a un archivo aparte (descartando las 5 restantes) con un
+script propio sobre @gltf-transform/core. 3) material recompuesto de
+alphaMode BLEND a MASK (alphaCutoff 0.5): con BLEND, las sombras de un
+InstancedMesh salen como un rectángulo sólido en vez de la silueta
+recortada de la hoja -- MASK es la técnica estándar para cards de follaje y
+da sombras correctas. 4) texturas a WebP 512px (de 2048px original) de 1,03
+MB a 63 KB. 5) escala: los archivos miden entre 0,98 y 2,29 m en su eje más
+largo tal cual vienen -- corregido con un factor ~0,0011 en el código para
+llevarlos a matas de ~0,15-0,30 m, tamaño de mata de pasto real.
+
 ==============================================================================
