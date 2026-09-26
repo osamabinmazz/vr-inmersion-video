@@ -614,3 +614,68 @@ el cambio no afecta el rendimiento: mismo total de triángulos/VRAM que la
 Fase 22 dentro del margen de error de medición (ver reporte de Fase 23).
 
 ==============================================================================
+
+------------------------------------------------------------------------------
+Fase 25 — El Centinela y segunda estatua: eliminado el pedestal de roca con
+la placa "THE SENTINEL", pies reubicados sobre el terreno real. En uso
+activo.
+------------------------------------------------------------------------------
+Pedido del usuario: "La parte donde tiene el nombre debe ser eliminada
+debe tener los pies en la tierra" -- la placa/inscripción "THE SENTINEL"
+(visible en la base de ambas estatuas, ver secciones de arriba) quedaba
+grabada en la propia geometría del pedestal de roca sobre el que están
+paradas las figuras, no como un objeto separado agregado por este proyecto.
+
+Ambos archivos (estatua_centinela.glb y estatua_centinela2.glb) resultaron
+ser una única malla sin welding (sin fusionar vértices compartidos entre
+superficies contiguas -- miles de fragmentos desconectados en vez de una
+malla continua), heredado de cómo se generaron originalmente. Esto impidió
+separar "pedestal" de "figura" por componentes conectados; se optó por un
+corte por altura de vértice (script propio sobre @gltf-transform/core,
+cut_pedestal.mjs): se eliminan los triángulos totalmente por debajo de una
+altura de corte, y se traslada toda la malla restante hacia abajo esa
+misma cantidad, para que el nuevo origen local (y=0) quede exactamente en
+el punto de apoyo de los pies -- así el código existente en main.js
+(`model.position.y = groundY(x,z)`) sigue funcionando sin cambios.
+
+Altura de corte calibrada por inspección visual iterativa (no hay una
+franja de vacío clara en el histograma de alturas para guiarse):
+  - estatua_centinela.glb: corte en y=0,14 (unidades locales). Resultado
+    limpio: sin geometría flotante, quedan solo algunos flecos angostos de
+    malla a nivel del piso (parte de tobillo/talón), invisibles a la
+    distancia de cámara de la escena.
+  - estatua_centinela2.glb: el pedestal de este archivo traía piedras
+    sueltas por encima de la altura del resto de la base (no todo al mismo
+    nivel) -- un corte bajo (y=0,14, análogo al anterior) dejaba esas
+    piedras como geometría flotante separada. Se subió el corte hasta
+    y=0,20 para eliminarlas del todo, a costa de perder el detalle de los
+    dedos de los pies (quedan como un muñón achatado apoyado en el piso).
+    Intercambio aceptado: geometría rota/flotante se nota más que un pie
+    simplificado a la distancia de cámara de esta escena.
+
+IMPORTANTE -- calidad limitada de estatua_centinela2 tras el corte: el
+archivo ya venía reducido a 23.688 triángulos desde la Fase 21 (simplify
+sobre el archivo original de 983.816, PEDESTAL INCLUIDO) -- la
+simplificación repartió su presupuesto de triángulos entre pedestal y
+figura, dejando muy pocos para el cuerpo. Al cortar el pedestal ahora,
+sobrevivieron solo 1.240 triángulos para toda la figura. El usuario pidió
+mejorar esto; la solución correcta es volver a simplificar desde el
+archivo ORIGINAL (983.816 triángulos, sin reducir) cortando el pedestal
+PRIMERO y recién ahí simplificando -- así todo el presupuesto de
+triángulos queda para el cuerpo. Ese archivo original ya no está
+disponible (no se conserva entre sesiones, era demasiado pesado para
+guardar) -- pendiente de que el usuario lo vuelva a subir.
+
+Escala recalibrada tras el corte (la calibración a 1,7 m ahora se hace
+contra la altura real de la figura SIN pedestal, más alta que antes en
+proporción porque se descontó la parte que no era humano):
+  - El Centinela (versión estática): 1,7 / 1,253 -> 1,7 / 1,1134.
+  - Segunda estatua: 1,7 / 0,995 -> 1,7 / 0,7979.
+  - guerrero_animado.glb (versión con esqueleto de El Centinela) no
+    necesitó cambios: ese archivo nunca tuvo pedestal.
+
+Rendimiento: -25.858 triángulos totales (3.410 de El Centinela + 22.448 de
+la segunda estatua) -- mejora neta medida en las 4 cámaras QC y en el
+barrido de 360° (ver reporte de Fase 25).
+
+==============================================================================

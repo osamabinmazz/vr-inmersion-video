@@ -1,0 +1,111 @@
+ZAPICÁN — FASE 25 · ESTATUAS SIN PEDESTAL, PIES SOBRE EL TERRENO REAL
+==============================================================================
+Snapshot: ZAPICAN_v101_estatuas_sin_pedestal (antes: v100_tero_real, Fase 24).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+El usuario: "La parte donde tiene el nombre debe ser eliminada debe tener
+los pies en la tierra". Aclaración tras una pregunta de desambiguación
+(inicialmente se investigaron los marcadores de texto POI -- Vaimacá Perú/
+Abayubá/Guyunusá -- que resultaron NO ser el tema): "Hablo de la
+inscripción parte de la estatua no lo que agregamos nosotros" -- se
+refería a la placa "THE SENTINEL" grabada en el pedestal de roca de ambas
+estatuas de la línea "El Centinela" (Fases 20 y 21).
+
+------------------------------------------------------------------------------
+2. DIAGNÓSTICO
+------------------------------------------------------------------------------
+Se renderizaron ambas estatuas en aislamiento con una cámara de
+acercamiento a la base: confirmado que la placa "THE SENTINEL" y un
+pedestal de roca están debajo de los pies de las dos figuras, como parte
+de la MISMA malla única (ambos archivos son "tripo_mesh_<uuid>", generados
+por el mismo pipeline que el tero de la Fase 24 -- sin sub-objetos
+separados por nombre que se pudieran ocultar).
+
+Se intentó separar "pedestal" de "figura" por componentes conectados de la
+malla (análisis de conectividad vértice-a-vértice): ambos archivos
+resultaron estar fragmentados en miles de piezas desconectadas (3.042
+componentes en El Centinela, 227 en la segunda estatua) sin un componente
+dominante que representara "el cuerpo" -- enfoque descartado, la malla
+nunca fue soldada (welded) al generarse.
+
+------------------------------------------------------------------------------
+3. SOLUCIÓN: CORTE POR ALTURA DE VÉRTICE
+------------------------------------------------------------------------------
+Script propio (cut_pedestal.mjs, sobre @gltf-transform/core): elimina
+triángulos totalmente por debajo de una altura de corte y traslada toda la
+malla restante hacia abajo esa misma cantidad -- el nuevo origen local
+(y=0) queda exactamente en el punto de apoyo de los pies, así el código
+existente (`model.position.y = groundY(x,z)`) no necesita ningún cambio.
+
+Altura de corte calibrada por inspección visual iterativa (sin una franja
+de vacío clara en el histograma de alturas para guiarse automáticamente):
+  - estatua_centinela.glb: y=0,14. Resultado limpio -- sin geometría
+    flotante, solo flecos angostos a nivel del piso (tobillo/talón),
+    invisibles a la distancia de cámara del proyecto.
+  - estatua_centinela2.glb: un primer corte en y=0,14 (análogo al anterior)
+    dejó piedras sueltas del pedestal FLOTANDO como geometría separada (el
+    pedestal de este archivo no era plano, tenía piedras a distinta
+    altura). Subido a y=0,20 para eliminarlas del todo -- a costa de
+    perder el detalle de los dedos de los pies (quedan como un muñón
+    achatado apoyado en el piso). Verificado visualmente en 3 iteraciones
+    (0,14 con piedras flotantes; 0,30 que comía las piernas enteras; 0,20
+    balance correcto) antes de aceptar el resultado.
+
+Escala recalibrada: la calibración a 1,7 m se hacía antes contra el bbox
+COMPLETO (estatua+pedestal); ahora se hace contra la altura real de la
+figura sin pedestal, más alta en proporción:
+  - El Centinela (estática): 1,7/1,253 -> 1,7/1,1134.
+  - Segunda estatua: 1,7/0,995 -> 1,7/0,7979.
+  - guerrero_animado.glb (la versión con esqueleto) no necesitó cambios --
+    nunca tuvo pedestal.
+
+Verificado en la escena real (no solo en aislamiento): ambas estatuas
+cargan sin errores de consola, con el conteo de triángulos esperado
+(15.414 y 1.240) y correctamente apoyadas en el terreno.
+
+------------------------------------------------------------------------------
+4. LÍMITE ENCONTRADO Y COMUNICADO AL USUARIO
+------------------------------------------------------------------------------
+La segunda estatua quedó con solo 1.240 triángulos tras el corte -- muy
+poco detalle corporal. Causa raíz: el archivo ya venía reducido a 23.688
+triángulos desde la Fase 21 (simplify sobre el original de 983.816, CON el
+pedestal todavía puesto) -- la simplificación repartió su presupuesto
+entre pedestal y figura, dejando muy poco para el cuerpo antes incluso de
+este corte. Se le explicó al usuario que la solución correcta es volver a
+simplificar desde el archivo original de 983.816 triángulos, cortando el
+pedestal PRIMERO y simplificando recién después -- pero ese archivo
+original ya no está disponible en este entorno (no se conserva entre
+sesiones). Pendiente de que el usuario lo re-suba si quiere mejor calidad
+en esta estatua puntual.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO
+------------------------------------------------------------------------------
+Línea base (Fase 24, v102): 1.738.724 triángulos, 656,9 MB VRAM, 7,2 ms de
+media de CPU por frame.
+
+Después de quitar los pedestales (v103_estatuas_sin_pedestal): 1.712.866
+triángulos (-25.858, coincide exactamente con los triángulos removidos: 3.410
++ 22.448), 656,7 MB VRAM (sin cambio real, la memoria la dominan las
+texturas, no la geometría). Mejora neta en CPU por frame: 6,0 ms de media /
+12,2 ms de máximo en el barrido de 360° (antes 7,2/14,8 ms). Las 4 cámaras
+QC individuales bajaron en conjunto: GROUND 6,6 ms (antes 9,75), MID 9,25
+ms (antes 12,4), HIGH 7,35 ms (antes 9,55), WATER 4,95 ms (antes 7,5). Sin
+anomalías en esta corrida -- no hizo falta una segunda medición de control.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con una sección de Fase 25 documentando
+el pedido, el diagnóstico de malla no soldada, la técnica de corte por
+altura, las alturas de corte elegidas para cada archivo, la recalibración
+de escala, y la limitación de calidad pendiente en la segunda estatua.
+
+Pendiente: árbol/sauce real (el usuario lo sube más tarde); archivo
+original de 983.816 triángulos de la segunda estatua (si el usuario quiere
+mejorar su calidad); cuervillo de cañada u otra ave adicional (abierto
+desde la Fase 24).
+
+==============================================================================
