@@ -169,66 +169,69 @@ a diferencia de la fauna). Material con extensión KHR_materials_unlit,
 soportada nativamente por Three.js — no requirió conversión.
 
 ------------------------------------------------------------------------------
-Tero (Vanellus chilensis) — modelo adaptado, en uso activo
+Tero (Vanellus chilensis) — modelo real, en uso activo (Fase 24)
 ------------------------------------------------------------------------------
-Título:    "Common Sandpiper"
-Autor:     shafee360 (https://sketchfab.com/shafee360)
-Fuente:    https://sketchfab.com/3d-models/common-sandpiper-27a8cc0c8ca240448f73fec00d5cf40b
-Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+Origen:    creado por el usuario en Tripo AI (reconstrucción 3D generativa a
+           partir de fotos de referencia), de su propiedad -- sin licencia
+           de terceros, no proviene de Sketchfab ni de ningún banco de
+           modelos externo.
+Reemplaza: el "Common Sandpiper" adaptado de la Fase 13 (especie distinta,
+           maquillada geométricamente para parecer un tero -- ver límites
+           honestos que tenía esa versión, documentados en el historial de
+           este archivo). Este modelo es la especie correcta desde el
+           origen, sin necesidad de adaptación.
 
-IMPORTANTE — especie distinta: es un playerito/andarríos chico (Actitis
-hypoleucos, ave playera del hemisferio norte), no un tero (Vanellus
-chilensis, ave de campo sudamericana). Sin rig ni animación. Se usa como
-base porque su anatomía general de ave zancuda de patas y pico finos era
-la más adaptable de las opciones gratis encontradas.
+Dos archivos entregados por el usuario:
+  1) Versión "hero" de referencia: ~1.970.000 triángulos, sin rig. Usada
+     solo para inspección visual, no se carga en la escena (demasiado
+     pesada para el presupuesto de un ave de fondo, sin beneficio real ya
+     que la versión rigged de abajo es visualmente idéntica a la distancia
+     de cámara del proyecto).
+  2) Versión rigged (la que se usa): 18.760 triángulos, esqueleto de 25
+     huesos. Trae las inverseBindMatrices con las mismas particularidades
+     que el archivo de El Centinela (Fase 20) -- se aplica el mismo fix
+     (skeleton.calculateInverses()+pose() al cargar) como medida
+     preventiva.
 
-Cambios geométricos (a pedido explícito del usuario, "patas un poco más
-largas; cuerpo un poco más redondeado; cuello apenas más marcado; copete
-fino"), aplicados con un script propio sobre las posiciones de vértice del
-archivo original (@gltf-transform/core), no en Blender:
-  1) Patas: la malla del cuerpo ("main") incluye también las patas -- se
-     identificó la franja de altura correspondiente (por debajo del 40%
-     de la altura total) y se la estiró 35% verticalmente, trasladando
-     todo lo que queda por encima (torso, cuello, cabeza, y los meshes
-     separados de pico/ojos/cola) hacia arriba en la misma cantidad para
-     que sigan encastrando con el torso ya estirado. 2) Torso: ensanchado
-     9% en el plano horizontal para un contorno más redondeado. 3) Cuello:
-     angostado 12% en la franja entre el torso y la cabeza para marcar más
-     la transición. 4) Copete: el modelo no trae uno -- se agregó como
-     geometría procedural aparte en el código (un cono fino oscuro sobre
-     la cabeza), no en el archivo .glb, siguiendo el mismo criterio que
-     las astas del venado hero (Fase 10).
-Sin recálculo de normales tras el estirado/ensanchado (cambios "un poco",
-moderados): a la distancia de cámara del proyecto no se notan artefactos
-de sombreado, pero es una simplificación consciente frente a remodelar en
-un programa 3D real.
+IMPORTANTE -- limitación del auto-rig de Tripo AI: los 25 huesos existen en
+la jerarquía, pero el 100% de los vértices de la malla están pesados
+únicamente al hueso raíz (bone_0) -- verificado inspeccionando JOINTS_0/
+WEIGHTS_0 de la malla (weight=1.0 en el índice 0 para absolutamente todos
+los vértices muestreados). El auto-rig arma el esqueleto pero no pinta
+pesos por hueso individual: mover una pata o el cuello por separado no
+tendría ningún efecto visual. Esto NO representa una pérdida funcional
+para este proyecto: la animación del tero ya era a nivel de todo el
+cuerpo (girar para "mirar", inclinar el cuerpo entero al "picotear" --
+ver TERO_STATES en main.js), nunca de miembros por separado, así que el
+comportamiento existente se preserva exactamente igual con el modelo real.
+Si en el futuro se quiere una caminata con patas articuladas de verdad,
+haría falta repintar los pesos en Blender (no disponible en este entorno).
 
-Cambios de color (a pedido, patrón de tero: "pecho/garganta negros,
-vientre blanco, cabeza gris, patas rojizas, pico rojizo con punta
-oscura"): el mesh del pico no traía textura (color plano casi negro) -- se
-le agregaron vertex colors (COLOR_0) con un degradé rojizo en la base y
-oscuro en la punta, según la posición de cada vértice a lo largo del pico.
-El mesh del cuerpo SÍ trae una textura fotográfica (patrón moteado
-gris-pardo realista, que se dejó sin tocar en el dorso/alas porque ya se
-parece bastante al plumaje dorsal real del tero) -- para pecho/cabeza/
-vientre/patas se generó una máscara por región rasterizando cada triángulo
-UV según la altura y la normal del vértice de origen (ventral vs dorsal vs
-frontal), y se recoloreó cada región preservando la luminosidad original
-de la textura (mismo criterio que el venado/ñandú) para no perder el
-sombreado de base. El ojo y la cola quedaron con su color original (negro),
-que ya es correcto para la especie.
+Copete: el modelo ya lo trae modelado (rasgo característico del tero) --
+se quitó el cono procedural que compensaba su ausencia en la versión
+anterior.
 
-Optimización: gltf-transform (texturas a WebP 1024px, geometría sin
-comprimir para no arriesgar los vertex colors del pico) de 2,84 MB a
-306 KB.
+Optimización: el archivo rigged entregado pesaba 9,13 MB (3 texturas sin
+comprimir, una de ellas un PNG de 4,6 MB). gltf-transform optimize
+(--texture-compress webp --texture-size 1024 --simplify false --compress
+false) lo bajó a 1,45 MB sin tocar geometría ni el esqueleto -- se
+verificó explícitamente que el skin sigue teniendo sus 25 joints después
+de optimizar, y que el resultado visual es indistinguible del original en
+un render aislado de comparación. NOTA: se corrió --compress false a
+propósito -- el preset por defecto de gltf-transform aplica compresión
+meshopt a la geometría, que este proyecto no soporta (el GLTFLoader de la
+escena no registra el decoder de meshopt), así que se lo desactivó
+explícitamente para no romper la carga.
 
-LÍMITE HONESTO: sigue siendo un playerito con maquillaje geométrico y de
-color, no un tero remodelado a mano. El pico es recto y fino (el del tero
-real es más corto y romo), y el "vientre blanco" es parcial porque la
-región ventral de este playerito es angosta comparada con la de un tero;
-se ve bien desde los ángulos de cámara habituales (de costado/frente a la
-altura de los ojos) pero no es taxonómicamente exacto de cerca o desde
-abajo.
+Escala: bbox real de la versión rigged ~0,978 m (alto y profundidad) ->
+0,327 m (tamaño real de la especie, ~32-38 cm, mismo criterio de
+calibración que la versión anterior).
+
+Rendimiento (Fase 22 -> Fase 24): +52.876 triángulos (coincide con la
+diferencia entre 4 teros nuevos y los 4 anteriores), VRAM final 656,9 MB
+(+3,3 MB neto sobre la línea base de la Fase 23, tras optimizar texturas),
+sin impacto real en CPU por frame (7,2 ms de media / 14,8 ms de máximo en
+el barrido de 360°, cámaras QC individuales sanas).
 
 ------------------------------------------------------------------------------
 Mulita (Dasypus hybridus) — modelo real, en uso activo

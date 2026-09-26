@@ -1,0 +1,105 @@
+ZAPICÁN — FASE 24 · TERO REAL (MODELO PROPIO DEL USUARIO, CREADO EN TRIPO AI)
+==============================================================================
+Snapshot: ZAPICAN_v100_tero_real (antes: v099_shrubs_procedurales, Fase 23).
+
+------------------------------------------------------------------------------
+1. CONTEXTO Y ORIGEN
+------------------------------------------------------------------------------
+Tras una búsqueda de candidatos reales para el ave "cuervillo de cañada"
+(Plegadis chihi) en Sketchfab, el único match exacto de especie encontrado
+fue rechazado por el usuario ("El cuervillo ese no sirve busca otro"). Al
+buscar alternativas y también un modelo real de tero (Vanellus chilensis,
+inexistente en Sketchfab/CGTrader/TurboSquid/Free3D bajo cualquier término
+de búsqueda), el usuario subió su propio modelo de tero, creado en Tripo AI
+a partir de fotos de referencia: "Lo cree en trip ai es de mi propiedad".
+
+Se entregaron dos archivos (en partes, con checksum SHA256 verificado
+contra el archivo reensamblado):
+  - bird3dmodel.glb (65,85 MB, ~1.970.000 triángulos, sin rig): versión
+    "hero" de referencia visual.
+  - bird_3d_mov.glb (9,13 MB, 18.760 triángulos, con esqueleto de 25
+    huesos): versión de producción.
+
+------------------------------------------------------------------------------
+2. DIAGNÓSTICO DEL RIG
+------------------------------------------------------------------------------
+Se verificó que el esqueleto carga y posa correctamente con el mismo fix
+usado en El Centinela (skeleton.calculateInverses()+pose()) -- sin
+deformación, pose idéntica a la versión de referencia en un render aislado
+de comparación.
+
+Se encontró que el auto-rig de Tripo AI construye la jerarquía de huesos
+pero NO pinta pesos de piel por hueso individual: inspeccionando JOINTS_0/
+WEIGHTS_0 de la malla, el 100% de los vértices muestreados están atados
+rígidamente al hueso raíz (bone_0, weight=1.0). Mover cualquier otro hueso
+no tendría ningún efecto.
+
+Se determinó que esto NO representa una pérdida real para este proyecto:
+la animación del tero (mirar/picotear, ver TERO_STATES en main.js) siempre
+operó a nivel de grupo completo (tero.rotation.y/z), nunca de huesos o
+miembros por separado. El comportamiento existente se preserva intacto sin
+ningún cambio en el loop de animación.
+
+------------------------------------------------------------------------------
+3. INTEGRACIÓN
+------------------------------------------------------------------------------
+Se reemplazó el "Common Sandpiper" adaptado (Fase 13, especie distinta
+maquillada geométricamente) por este tero real, en el mismo call site
+(tryUpgradeToModel) sin tocar el sistema de máquina de estados ni el loop
+de animación. Cambios de código:
+  - scale: 0,31 -> 0,327 (recalibrado contra el bbox real del nuevo
+    archivo, ~0,978 m -> tamaño real de la especie ~32-38 cm).
+  - onModel: se quitó el cono procedural que simulaba el copete (el modelo
+    nuevo ya lo trae modelado) y se agregó el fix de calculateInverses()+
+    pose() sobre el SkinnedMesh.
+
+Optimización: el archivo rigged entregado pesaba 9,13 MB por tres texturas
+sin comprimir (una de ellas un PNG de 4,6 MB). gltf-transform optimize
+(--texture-compress webp --texture-size 1024 --simplify false --compress
+false) lo bajó a 1,45 MB sin tocar geometría ni esqueleto -- verificado
+que el skin conserva sus 25 joints y que el resultado es visualmente
+indistinguible del original. Se desactivó --compress explícitamente (el
+preset por defecto usa meshopt para la geometría, que este proyecto no
+soporta al no registrar el decoder correspondiente en el GLTFLoader de la
+escena).
+
+Verificado en la escena real (no en aislamiento): los 4 individuos cargan
+el modelo real, ocultan la geometría procedural de respaldo, con la
+escala/posición correctas y sin errores de consola.
+
+------------------------------------------------------------------------------
+4. RENDIMIENTO
+------------------------------------------------------------------------------
+Línea base (Fase 23, v100b): 1.685.892 triángulos, 653,6 MB VRAM, 7,55 ms
+de media de CPU por frame.
+
+Después del reemplazo del tero (v102_tero_optimizado, tras optimizar
+texturas): 1.738.724 triángulos (+52.876, coincide con la diferencia de
+peso entre 4 teros nuevos y 4 anteriores), 656,9 MB VRAM (+3,3 MB neto),
+7,2 ms de media / 14,8 ms de máximo en el barrido de 360°. Cámaras QC
+individuales sanas (GROUND 9,75 ms, MID 12,4 ms, HIGH 9,55 ms, WATER 7,5
+ms) -- MID levemente por encima de 11 ms, consistente con ser ya la cámara
+de mayor carga en fases anteriores, no una regresión nueva introducida acá.
+
+NOTA METODOLÓGICA: una primera corrida contra el archivo SIN optimizar
+(v101_tero_real, con las texturas de 9,13 MB) registró un pico anómalo de
+251,55 ms de media / 5.886 ms de máximo en el barrido de 360° con las 4
+cámaras QC individuales ya saludables en esa misma corrida -- mismo patrón
+de pausa puntual del entorno ya documentado repetidas veces en esta sesión
+(v081, v093, v099/v099b, v100/v100b). La corrida posterior sobre el
+archivo optimizado (v102) confirmó números sanos, descartando una
+regresión real.
+
+------------------------------------------------------------------------------
+5. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado: reemplazada la entrada de la Fase 13
+("Common Sandpiper" adaptado) por la nueva entrada de Fase 24, documentando
+origen (propiedad del usuario, creado en Tripo AI, sin licencia de
+terceros), la limitación del auto-rig, y el proceso de optimización.
+
+Pendiente: árbol/sauce real (el usuario avisó que lo sube más tarde);
+cuervillo de cañada u otra ave adicional queda abierto (el candidato de
+Sketchfab fue rechazado, sin reemplazo todavía).
+
+==============================================================================
