@@ -1,0 +1,138 @@
+ZAPICÁN — FASE 20 · EL CENTINELA: ESTATUA QUE DESPIERTA Y CAMINA
+==============================================================================
+Snapshot: ZAPICAN_v096_centinela (antes: v095_sauce_lloron, Fase 19).
+
+------------------------------------------------------------------------------
+1. LOS DOS ARCHIVOS Y LO QUE REALMENTE SON
+------------------------------------------------------------------------------
+El usuario subió dos .glb sin texto: "tribalwarriorstatue3dmodel.glb" y
+"tribal_warrior_3d_model.glb". Antes de integrarlos se renderizaron para ver
+qué eran realmente:
+
+- El primero es "The Sentinel" -- una base con placa comercial sugiere que
+  es el escaneo/render de una estatuilla de venta (resina decorativa), no
+  un asset con licencia Creative Commons declarada. A diferencia de TODO
+  el resto de CREDITS_MODELOS_3D.txt, acá no hay fuente ni licencia que
+  citar -- documentado como incertidumbre, no asumido como "en regla".
+- El segundo parecía, en una primera inspección visual, un desastre
+  irreconocible (extremidades disparadas en ángulos imposibles). Se
+  investigó antes de descartarlo: la malla CRUDA (sin aplicar el esqueleto)
+  se veía perfecta -- mismo personaje que la estatua, en T-pose. El
+  problema estaba en las inverseBindMatrices del archivo, corruptas o
+  desalineadas.
+
+Se le señaló al usuario ADEMÁS que la vestimenta/iconografía (tocado de
+plumas multicolor, capa de piel) es del estilo genérico "nativo americano
+de las llanuras" de imaginería de stock, no la cultura material real
+Charrúa -- relevante porque el objetivo declarado del proyecto es educativo
+("que vean cómo eran flora y fauna" reales). El usuario decidió usarlo
+igual, con la mecánica descripta abajo; queda documentado en CREDITS como
+licencia artística del proyecto, no como investigación histórica.
+
+------------------------------------------------------------------------------
+2. EL BUG DE LAS INVERSEBINDMATRICES Y SU ARREGLO
+------------------------------------------------------------------------------
+Diagnóstico paso a paso (con renders aislados en cada etapa):
+1. Malla con skin aplicado tal cual venía el archivo: deformada,
+   irreconocible.
+2. Misma malla como THREE.Mesh común (ignorando el skin): perfecta, en
+   T-pose, mismo personaje que la estatua.
+3. Conclusión: el problema es la relación esqueleto↔bind pose, no la
+   geometría en sí.
+4. Arreglo probado y confirmado: `skinnedMesh.skeleton.calculateInverses()`
+   + `skeleton.pose()` justo después de cargar el modelo (recalcula las
+   inverseBindMatrices a partir de la pose real de los huesos, en vez de
+   confiar en las que traía el archivo). Resultado: la malla con skin
+   vuelve a verse idéntica a la cruda.
+5. Prueba de pose real (no solo el bind pose): se rotaron huesos de pierna
+   y brazo a mano y se verificó que la malla deforma correctamente,
+   confirmando que el esqueleto es usable para animación, no solo para
+   mostrarlo quieto.
+
+LIMITACIÓN adicional encontrada en el paso 5: rotar los huesos
+mixamorig(Left|Right)Arm en el eje Z (bajar el brazo hacia el costado)
+estira el brazo en una tira larga y deforme, incluso a ángulos chicos (0,3
+rad) -- confirmado con una grilla comparativa de 5 ángulos. Rotarlos en X
+(adelante/atrás) no tiene ese problema a ningún ángulo probado. Se
+interpreta como pesos de skinning mal pintados alrededor del hombro en el
+archivo de origen, no reparable sin acceso a una herramienta de retopología/
+repintado de pesos (sin Blender en este entorno). El ciclo de piernas/
+brazos de este personaje usa solo el eje X en consecuencia; los brazos
+quedan en una posición de reposo parcialmente elevada (no bajados del todo
+a los costados) en vez de una pose de pie perfectamente natural.
+
+------------------------------------------------------------------------------
+3. MECÁNICA IMPLEMENTADA
+------------------------------------------------------------------------------
+Pedido del usuario (verbatim, traducido de su mensaje con errores de tipeo):
+"hay una que tiene una pose, esa estará como una estatua, y de ella saldrá
+la otra -- la de los brazos abiertos que tiene esqueleto para animarlo -- y
+la haremos caminar y hacer algo, no sé, para darle vida; una vez que se
+mueva, la primera desaparece."
+
+Implementado en main.js:
+- Carga ambos modelos en la misma posición (llanura abierta, lejos de la
+  laguna). La estatua está visible desde el arranque, mirando hacia el
+  punto de vista (HERO_VIEW_POS), como corresponde a un centinela.
+- A los ~20 s de render (WARRIOR_AWAKEN_AT), si ambos modelos ya
+  terminaron de cargar: la estatua se oculta, el modelo con esqueleto se
+  hace visible en el mismo lugar.
+- Ciclo de piernas/brazos a mano (sin clip de Mixamo disponible en el
+  archivo): rotación seno en las piernas (mismo criterio que el swing de
+  patas del ñandú en SHORT_WALK), brazos en fase opuesta, todo con una
+  envolvente de amplitud que sube y baja de a poco (evita que el ciclo
+  arranque o corte de golpe a mitad de zancada). Camina ~7 m hacia el
+  interior del territorio (WARRIOR_HEADING, con leve desvío) durante 13 s
+  y se detiene. Transformación de un solo sentido -- no vuelve a ser
+  estatua.
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores/warnings nuevos de
+consola en múltiples corridas. Confirmado en la escena real: estatua
+visible al arranque, se oculta y el modelo animado aparece y camina tras
+el disparador, se detiene en la posición esperada (verificado por cálculo
+de vector de dirección contra la posición final real). Capturas del ciclo
+de caminata a mitad de recorrido y ya detenido: ambos brazos visibles sin
+estiramiento, piernas alternando correctamente, sin manchones negros ni
+geometría rota.
+
+Nota metodológica de esta fase: varias verificaciones tempranas devolvieron
+falsos negativos ("no se encontró el esqueleto en la escena") simplemente
+por no esperar lo suficiente -- la carga de assets en este entorno headless/
+SwiftShader puede tardar 30-40 s en asentarse, muy por encima de lo que
+tardaría un navegador real. Ya documentado como lección repetida de fases
+anteriores de esta misma sesión.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — v096 (sin El Centinela) vs v097 (estatua + versión animada)
+------------------------------------------------------------------------------
+                          v096            v097
+  Triángulos cargados   1.858.594       1.888.160   (+29.566 -- coincide casi
+                                                     exacto con la suma de
+                                                     ambos archivos, 18.824 +
+                                                     10.782 = 29.606)
+  Mallas                    546             547
+  VRAM geometría          109,9 MB        115,4 MB   (+5,5 MB)
+  VRAM texturas           515,7 MB        537,0 MB   (+21,3 MB)
+  VRAM estimada total     643,1 MB        669,9 MB   (+26,8 MB, +4,2%)
+  CPU por frame (media/máx) 5,43/9,5 ms   4,85/11,8 ms (dentro del ruido de
+                                                        medición ya visto en
+                                                        fases anteriores)
+
+Ambos modelos (estatua oculta + versión animada visible) cargados y
+contando en el total de triángulos como se esperaba. Cero errores de
+consola. Costo moderado y sin impacto real en tiempo de CPU por frame.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la salvedad de procedencia/licencia
+desconocida (a diferencia de todo el resto del archivo) y la nota de
+precisión cultural. Limitación de animación (brazos no bajan del todo)
+documentada como propia del archivo de origen, no del código de este
+proyecto -- reemplazable si en el futuro aparece una versión del mismo
+personaje con los pesos de skinning bien pintados.
+
+==============================================================================

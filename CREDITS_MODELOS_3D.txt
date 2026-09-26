@@ -467,3 +467,67 @@ sin bug de escala -- no hizo falta factor de corrección, caso raro entre
 los assets de Sketchfab usados en este proyecto.
 
 ==============================================================================
+
+------------------------------------------------------------------------------
+"El Centinela": estatua que despierta y camina — PROCEDENCIA Y LICENCIA
+DESCONOCIDAS, salvedad de precisión cultural. En uso activo.
+------------------------------------------------------------------------------
+Archivos: viewer/public/assets/models/estatua_centinela.glb (versión
+estática) y guerrero_animado.glb (versión con esqueleto, sin clip de
+animación propio). Ambos subidos directamente por el usuario, sin fuente
+ni licencia declarada.
+
+IMPORTANTE — a diferencia de TODO el resto de este archivo, acá NO hay una
+licencia Creative Commons verificable que citar. El archivo estático trae
+una base con una placa que dice "THE SENTINEL", lo que sugiere que es el
+escaneo/render de una estatuilla comercial (venta de decoración tipo
+resina) -- no se pudo confirmar el autor original ni si el uso en un
+proyecto como este está permitido. Se documenta esta incertidumbre en vez
+de asumir que está todo en regla, a diferencia de los demás modelos de este
+archivo que sí tienen fuente y licencia confirmadas.
+
+IMPORTANTE — precisión cultural: la vestimenta/iconografía de este
+personaje (tocado de plumas multicolor, capa de piel, pintura facial) es
+del estilo genérico "nativo americano de las llanuras" de la imaginería de
+stock/Hollywood -- NO corresponde a la cultura material real del pueblo
+Charrúa (que no usaba tocados de plumas de ese tipo). Se le señaló esto al
+usuario antes de integrarlo; decidió usarlo igual con la mecánica descripta
+abajo. Documentado acá para que quede claro que es una licencia artística
+del proyecto, no una representación de investigación histórica/arqueológica
+de la cultura Charrúa (a diferencia del objetivo general del proyecto,
+"educativo para que vean cómo eran flora y fauna").
+
+Mecánica (pedido explícito del usuario): arranca como estatua estática; a
+los ~20 s "despierta" -- desaparece la estatua y aparece en su lugar la
+versión con esqueleto, camina unos metros hacia el interior del territorio
+y se detiene. Transformación de un solo sentido.
+
+BUG encontrado y corregido: el archivo con esqueleto (guerrero_animado.glb)
+trae las inverseBindMatrices corruptas/desalineadas -- la malla cruda (sin
+skin) se ve perfecta, pero con el skin aplicado tal cual venía salía
+deformada en una masa irreconocible. Se corrige en tiempo de carga con
+`skeleton.calculateInverses()` + `skeleton.pose()` (recalcula las matrices
+a partir de la pose real de los huesos). Confirmado con capturas aisladas:
+piernas y brazos quedan independientes y correctos tras el fix.
+
+LIMITACIÓN encontrada (no reparable con los datos disponibles): rotar
+mixamorig(Left|Right)Arm en Z (bajar el brazo hacia el costado, lo natural
+para una postura de pie relajada) estira el brazo en una tira larga y
+deforme -- probablemente pesos de skinning mal pintados alrededor del
+hombro en el archivo de origen. Confirmado con una grilla de comparación en
+5 ángulos: el problema aparece incluso a 0,3 rad y empeora con el ángulo.
+Rotar en X (adelante/atrás, el eje natural del vaivén al caminar) no tiene
+este problema. Por eso el ciclo de piernas/brazos de este personaje usa
+solo el eje X, y los brazos quedan en una posición de reposo parcialmente
+elevada (no bajados del todo a los costados) en vez de una pose de pie
+perfectamente natural -- limitación aceptada del archivo de origen, no del
+código de este proyecto.
+
+Optimización: gltf-transform optimize (texture-compress webp, texture-size
+1024, sin simplify/weld en el archivo con esqueleto para no arriesgar los
+pesos de skinning) de 3,2 MB y 6,39 MB a 1,27 MB y 1,07 MB respectivamente.
+Escala: ambos archivos vienen en unidades arbitrarias (estatua ~1,253 m,
+esqueleto ~1,0 m de alto) -- corregidos a 1,7 m (altura humana adulta) por
+separado.
+
+==============================================================================
