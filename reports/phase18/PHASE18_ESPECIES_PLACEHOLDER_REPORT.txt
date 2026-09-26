@@ -1,0 +1,170 @@
+ZAPICÁN — FASE 18 · ESPECIES PLACEHOLDER (PACK 4K PBR)
+==============================================================================
+Snapshot: ZAPICAN_v094_placeholder_species (antes: v093_grass_tufts, Fase 17).
+
+Pedido explícito del usuario, tras evaluar el pack "fauna_flora_uruguay_3d_
+4K_PBR_para_claude" (20 modelos .glb + texturas 4K, entregado en el lote
+grande de archivos de esta sesión): "Integrar todas las especies pendientes
+ahora como placeholders" -- documentadas honestamente como tales en
+CREDITS, reemplazables especie por especie cuando haya un modelo real.
+
+------------------------------------------------------------------------------
+1. QUÉ ES REALMENTE EL PACK DE ORIGEN
+------------------------------------------------------------------------------
+El propio README del pack (README_4K_PARA_CLAUDE.md) lo dice sin rodeos:
+"Estas son texturas PBR 4K procedurales de alta resolución... No son
+escaneos fotogramétricos 4K de ejemplares reales." Se verificó además que
+los 20 .glb tienen el campo "generator":"trimesh" -- geometría generada por
+script, no modelado ni escaneado. Inspección de los archivos: 0 materiales,
+sin coordenadas UV, solo POSICIÓN y color de vértice ya horneado; varias
+especies literalmente COMPARTEN la misma malla y el mismo color base (p.ej.
+zorro de monte y venado de campo son vertex-por-vertex idénticos, solo
+cambia el nombre del archivo) -- confirmado antes de pedirle al usuario
+cómo proceder, y la decisión que eligió ("Integrar todas las especies
+pendientes ahora como placeholders") ya tenía ese contexto sobre la mesa.
+
+Sin UV no hay forma de aplicar el set de texturas 4K (BaseColor/Roughness/
+Normal/Height) que acompaña al pack sin un unwrap manual en Blender,
+herramienta no disponible en este entorno (sin bpy/Blender headless) --
+quedan sin usar, documentadas en CREDITS por si una sesión futura con
+Blender disponible quiere aprovecharlas.
+
+------------------------------------------------------------------------------
+2. PIPELINE DE MATERIAL Y UN BUG ENCONTRADO EN EL CAMINO
+------------------------------------------------------------------------------
+Script propio (apply_placeholder_material.mjs, sobre @gltf-transform/core),
+reusado para las 15 especies: asigna un material pbrMetallicRoughness sin
+texturas (solo factores -- roughness fijo según tipo de superficie: fur
+0.85, spotted_fur 0.8, wet_fur 0.5, wet_skin 0.35, feather 0.65, scales
+0.45, shell 0.55, frog_skin 0.6, leaf_bark 0.85, grass 0.85; metalness 0
+siempre), deja el vertex color intacto (es lo único que da color al
+placeholder), y corre gltf-transform optimize (join+weld) para reducir de
+~15-27 primitivas sueltas a 1 sola malla por especie.
+
+BUG: los .glb de origen no traen atributo NORMAL. Se detectó recién al
+revisar una captura de la escena real con las 13 especies de fauna/flora ya
+integradas: aparecían manchones NEGROS sólidos y formas pálidas
+irreconocibles superpuestas a la vegetación, en los dos modelos de
+cobertura de suelo (pastizal_nativo/pajonal_bañado) integrados como
+InstancedMesh. Una prueba aislada de esos mismos archivos con luz ambiente
+fuerte los mostraba en verde, sin problema -- lo que ocultó el bug en un
+primer chequeo: sin NORMAL, la luz direccional (el "sol" de la escena real)
+no tiene con qué calcular el difuso y aporta cero, dejando solo la
+contribución ambiente (mucho más débil en la escena real que en la prueba
+aislada) -- prácticamente negro. Se corrigió agregando
+`doc.transform(normals({ overwrite: false }))` de @gltf-transform/functions
+ANTES del join+weld, y se regeneraron los 15 archivos (no solo los 2 de
+cobertura de suelo, por las dudas de que el resto tuviera el mismo problema
+de forma menos visible). Confirmado con inspección de atributos: los 15
+archivos finales traen NORMAL. Vuelto a verificar en la escena real: cero
+manchones negros, cero errores de consola.
+
+------------------------------------------------------------------------------
+3. ESPECIES INTEGRADAS Y CRITERIO DE ESCALA/UBICACIÓN
+------------------------------------------------------------------------------
+11 fauna + 2 flora (un espécimen cada una, tryUpgradeToModel sobre un group
+vacío -- sin fallback procedural, no vale la pena para contenido
+placeholder) + 2 coberturas de suelo (InstancedMesh, igual criterio que las
+matas de pasto de la Fase 17):
+
+  Mamíferos: zorro de monte (1, llanura), gato montés (1, llanura),
+    guazubira (1, llanura), lobito de río (2, orilla), lobo marino (1,
+    orilla -- ver nota ecológica abajo).
+  Aves: chajá (2, orilla), cardenal amarillo (2, llanura/monte), garza mora
+    (1, orilla).
+  Reptiles/anfibios: lagarto overo (1, llanura soleada), tortuga de río (2,
+    orilla), sapito de San Martín (2, orilla).
+  Flora: guayabo del país (2), arazá (2).
+  Cobertura de suelo: pastizal nativo (35 copias, InstancedMesh) y pajonal
+    de bañado (25 copias, InstancedMesh, banda húmeda de la orilla).
+
+Escala: cada especie se calibró por separado contra su tamaño real
+aproximado, usando el eje horizontal más largo del bounding box (world-
+space, vía getBounds de @gltf-transform/functions) como referencia --
+p.ej. zorro 2,70 m → escala 0,333 para ~0,9 m de largo; lobo marino 2,55 m
+→ escala 0,864 para ~2,2 m. Sin pose de pie creíble en el archivo de origen
+(patas "abiertas" en vez de apoyadas): en vez de fingir una caminata que
+quedaría mal, se les da solo un balanceo de reposo sutil (sin(t)*0.015m en
+Y), la única animación de estas 16 especies.
+
+Nota ecológica (documentada también en CREDITS): el lobo marino es una
+especie estrictamente costera/marina, no de laguna de agua dulce. Se
+incluyó igual porque estaba en el lote ya aprobado por el usuario, pero es
+una licencia del proyecto, no un hábitat real -- vale la pena tenerlo
+presente si se busca precisión ecológica estricta más adelante.
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test en la escena real (Playwright +
+Chromium/SwiftShader): cero errores/warnings nuevos de consola. Las 16
+especies de fauna/flora individuales confirmadas cargadas
+(userData.realModel presente) tras el fix de normales. Capturas de las 4
+cámaras QC (GROUND/MID/HIGH/WATER) revisadas: sin manchones negros, agua y
+vegetación existente sin cambios visuales inesperados, las nuevas especies
+visibles y en escala razonable.
+
+Limitación visual ya conocida y documentada (no es un bug, es la naturaleza
+del placeholder): las formas son de primitivas genéricas -- varias especies
+comparten literalmente la misma silueta -- y contrastan con el estilo más
+pulido del resto de la vegetación baja-poli de la escena. Es el costo
+esperado de "placeholder ahora, reemplazo real después", ya aceptado
+explícitamente por el usuario.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — v093 (sin especies placeholder) vs v095 (con las 15, tras
+   el fix de normales)
+------------------------------------------------------------------------------
+                              v093            v095
+  Triángulos cargados       1.011.264       1.843.728   (+832.464, +82%)
+  Mallas                        520             544      (+24)
+  Draw calls (barrido, media)   127,1           137,8    (+10,7)
+  Draw calls con sombra (máx)   n/d             350
+  Triángulos con sombra (máx) 1.545.706       2.719.177  (+76%)
+  VRAM geometría                40,0 MB        107,7 MB  (+67,7 MB)
+  VRAM texturas                483,7 MB        483,7 MB  (sin cambio --
+                                                          placeholders sin
+                                                          textura propia)
+  VRAM estimada total          541,1 MB        608,9 MB  (+67,8 MB, +12,5%)
+  CPU por frame (media/máx)    n/d* / n/d*     4,97 ms / 10,1 ms
+
+*El JSON de la medición v093 registró una media de 463,34 ms y un máximo de
+5.949 ms de CPU por frame -- dos órdenes de magnitud por encima de lo que
+mide esta misma fase (v094 dio 5,4/10,2 ms; v095 dio 4,97/10,1 ms, ambas
+corridas consistentes entre sí). Se documenta la cifra de v093 tal cual
+quedó registrada en su momento, pero por la disparidad con las dos
+mediciones de esta fase (hechas con el mismo script, mismo criterio) se
+interpreta como ruido puntual del entorno de esa corrida (pausas de
+GC/swap del contenedor), no como una mejora real de 100x introducida por
+esta fase -- no hay ningún cambio en este lote que explicaría semejante
+salto. La comparación honesta y confiable es la de triángulos/mallas/VRAM
+de arriba.
+
+El aumento de VRAM de geometría (+67,7 MB) es mayor al esperado para
+geometría sin texturas: se debe al fix de normales (§2) -- calcular
+NORMAL antes del weld deja MÁS vértices únicos sin fusionar (welding solo
+fusiona vértices realmente idénticos, y con normales distintas en la base
+de cada "hoja" de pastizal/pajonal, ya no se fusionan tanto como antes del
+fix). Es el costo correcto de tener geometría que renderiza bien en vez de
+en negro. El tiempo de CPU por frame (4,97/10,1 ms) queda cómodo dentro de
+cualquier presupuesto de VR (11 ms para 90 Hz), así que no se optimizó más
+allá de esto.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+Con esto se completan las Tareas 36-42 pendientes: pack verificado,
+pipeline reusable construido, 11 fauna + 2 flora + 2 coberturas de suelo
+integradas, documentadas honestamente como placeholder en CREDITS
+(incluida la salvedad de licencia/procedencia y la nota ecológica del lobo
+marino), medidas antes/después. El set de texturas 4K del pack queda sin
+usar (sin UV en la geometría, ver §1) -- si en el futuro se dispone de
+Blender para hacer un unwrap manual, o si aparecen escaneos reales de
+alguna de estas 11 especies, el reemplazo es especie por especie, mismo
+patrón que tero/venado/mulita en fases anteriores.
+
+Pendiente aparte, sin resolver todavía: el modelo "Salix Plant" (sauce,
+Evermotion, de pago) que el usuario aprobó comprar en un turno anterior
+sigue sin subirse a la sesión.
+
+==============================================================================

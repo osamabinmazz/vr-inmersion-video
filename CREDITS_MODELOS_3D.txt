@@ -335,3 +335,96 @@ largo tal cual vienen -- corregido con un factor ~0,0011 en el código para
 llevarlos a matas de ~0,15-0,30 m, tamaño de mata de pasto real.
 
 ==============================================================================
+
+------------------------------------------------------------------------------
+Fase 18 — Especies placeholder (pack "fauna_flora_uruguay_3d_4K_PBR"),
+en uso activo, con la salvedad honesta que sigue
+------------------------------------------------------------------------------
+Origen:    pack de 20 modelos .glb + set de texturas 4K (BaseColor,
+           Roughness, Normal, Height) entregado directamente por el
+           usuario en el lote grande de archivos de esta sesión
+           (fauna_flora_uruguay_3d_4K_PBR_para_claude.zip, partido en 5
+           partes; README_4K_PARA_CLAUDE.md y MANIFEST_4K.csv incluidos).
+           NO es un asset de terceros con licencia Creative Commons como
+           el resto de este archivo -- no tiene autor/fuente/licencia que
+           citar porque es contenido generado específicamente para este
+           proyecto, no descargado de un banco de modelos.
+Licencia:  no aplica (sin tercero a atribuir); el propio README del pack
+           aclara: "Estas son texturas PBR 4K procedurales de alta
+           resolución... No son escaneos fotogramétricos 4K de ejemplares
+           reales."
+
+IMPORTANTE — qué es realmente este placeholder (a diferencia de todos los
+casos anteriores de este archivo, que son modelos reales aunque de una
+especie aproximada): los 20 archivos .glb del pack están generados por
+script (campo "generator":"trimesh" en el propio glTF) -- geometría de
+primitivas simples (esferas/cápsulas) sin UV, 0 materiales, coloreada solo
+con vertex color ya horneado. Varias especies literalmente COMPARTEN la
+misma plantilla genérica recoloreada (p.ej. zorro y venado de campo tienen
+exactamente la misma malla y el mismo vertex color base, solo cambia el
+nombre del archivo) -- no son representaciones fieles de cada especie, son
+un marcador de posición de "hay un animal de este tamaño más o menos acá".
+El set de texturas 4K que acompaña al pack (carpeta textures_4K_PBR/) NO
+se pudo aplicar: la geometría no tiene coordenadas UV, así que mapear esas
+texturas requeriría un unwrap manual en Blender, herramienta no disponible
+en este entorno (sin bpy/Blender headless) -- las texturas 4K quedan sin
+usar, documentadas acá por si una sesión futura con Blender disponible
+quiere aprovecharlas.
+
+Especies integradas (11 fauna + 2 flora + 2 coberturas de suelo), todas
+como PLACEHOLDER a reemplazar especie por especie cuando haya un modelo
+real, igual que se hizo con tero/venado/mulita en fases anteriores:
+  Mamíferos: zorro de monte (Lycalopex gymnocercus), gato montés
+    (Leopardus geoffroyi), lobito de río (Lontra longicaudis), lobo marino
+    (Otaria flavescens), guazubira (Subulo gouazoubira).
+  Aves: chajá (Chauna torquata), cardenal amarillo (Gubernatrix cristata),
+    garza mora (Ardea cocoi).
+  Reptiles/anfibios: lagarto overo (Salvator merianae), tortuga de río
+    (Phrynops hilarii), sapito de San Martín (Odontophrynus americanus).
+  Flora: guayabo del país (Acca sellowiana), arazá (Psidium cattleianum).
+  Cobertura de suelo: pastizal nativo y pajonal de bañado (estos dos NO
+    son un espécimen individual como los anteriores, sino UN matorral ya
+    armado con 120 primitivas de "hoja" -- mismo criterio que las matas de
+    pasto de la Fase 17 -- integrados como InstancedMesh, cobertura
+    suplementaria sin reemplazar el pasto procedural existente).
+
+Nota ecológica: el lobo marino es una especie estrictamente costera/marina,
+no de laguna de agua dulce. Se incluyó igual porque el usuario aprobó
+integrar "todas las especies pendientes" en un lote ya cerrado, pero es una
+licencia del proyecto, no un hábitat real para la especie -- vale la pena
+tenerlo presente si se busca precisión ecológica estricta más adelante.
+
+Cambios (pipeline propio, apply_placeholder_material.mjs sobre
+@gltf-transform/core, reusado para las 15 especies):
+1) se asigna UN material pbrMetallicRoughness por archivo (sin texturas,
+   solo factores) con roughness fijo según el tipo de superficie
+   (fur 0.85, spotted_fur 0.8, wet_fur 0.5, wet_skin 0.35, feather 0.65,
+   scales 0.45, shell 0.55, frog_skin 0.6, leaf_bark 0.85, grass 0.85) y
+   metalness 0; el vertex color original queda intacto y es lo que da el
+   color final.
+2) gltf-transform optimize (join+weld) para reducir de ~15-27 primitivas
+   sueltas a 1 sola malla por especie (menos draw calls).
+3) BUG encontrado y corregido durante esta fase: los .glb de origen no
+   traen atributo NORMAL. Sin agregarlo explícitamente (doc.transform con
+   la función `normals()` de @gltf-transform/functions, ANTES del
+   join+weld), la malla combinada queda sin normales -- se ve razonable
+   como Mesh suelto de baja poligonización bajo luz ambiente fuerte, pero
+   rinde negro sólido al reusar esa misma geometry en un InstancedMesh
+   bajo la luz direccional del sol de la escena real (pastizal_nativo/
+   pajonal_bañado, integrados como InstancedMesh -- ver más abajo). Se
+   detectó al revisar una captura de la escena real con los 13 individuos
+   de fauna/flora ya cargados; se corrigió el script y se regeneraron los
+   15 archivos.
+4) escala: cada especie se calibró por separado (ver comentario junto a
+   cada llamada a addPlaceholderLand/WaterEdge/Flora en main.js) contra su
+   tamaño real aproximado, usando el eje horizontal más largo del bounding
+   box como referencia -- la pose de las patas es genérica/abierta (no hay
+   una pose de pie creíble en el archivo de origen), así que no se intentó
+   fingir una caminata; la única animación es un balanceo de reposo sutil.
+
+Uso: viewer/public/assets/models/{zorro,gato_montes,lobito,lobo_marino,
+guazubira,chaja,cardenal,garza_mora,lagarto,tortuga,sapito,guayabo,araza,
+pastizal_nativo,pajonal_banado}.glb (no se commitean, igual criterio que
+el resto de assets pesados).
+
+==============================================================================
