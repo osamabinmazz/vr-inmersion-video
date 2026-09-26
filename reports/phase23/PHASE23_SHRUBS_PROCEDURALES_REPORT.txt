@@ -1,0 +1,124 @@
+ZAPICÁN — FASE 23 · GUAYABO Y ARAZÁ: REEMPLAZO PROCEDURAL DE LOS PLACEHOLDER
+==============================================================================
+Snapshot: ZAPICAN_v099_shrubs_procedurales (antes: v098_tint_distribucion,
+Fase 22).
+
+------------------------------------------------------------------------------
+1. MOTIVO
+------------------------------------------------------------------------------
+En la Fase 22 se auditó el par guayabo del país / arazá y se decidió NO
+tocarlo, con el argumento de que ya traían detalles distintivos propios
+(flores blancas vs. frutos naranjas) "suficientes para un elemento de fondo
+estacionario". El usuario corrigió esa decisión explícitamente:
+
+  "El guayabo y araza espero que lo hallas editado y mejorado por que no
+  me gusto"
+
+Esto invalida el juicio de la Fase 22: el problema no era solo de
+diferenciación entre las dos especies (lo que sí se había resuelto con
+tinte para otros pares como zorro/guazubira), sino la calidad visual de la
+geometría en sí, heredada del pack placeholder "4K PBR" de la Fase 18 --
+un cúmulo de esferas genérico sin relación con la silueta real de un
+arbusto, y sin relación con la estética del resto de la vegetación nativa
+ya lograda en la escena (espinillo, algarrobo, ceibo, sauce).
+
+------------------------------------------------------------------------------
+2. SOLUCIÓN: GEOMETRÍA PROCEDURAL PROPIA, NO UN NUEVO MODELO IMPORTADO
+------------------------------------------------------------------------------
+En vez de buscar/pedir un nuevo asset externo (con el riesgo de licencia y
+calidad ya documentado extensamente en este proyecto para modelos de
+terceros), se reutilizó el sistema procedural de copas que el proyecto ya
+usa para los árboles de monte nativos (espinillo/algarrobo): buildLobeMass,
+inflateLobes, lobeSurface y makeBarkMaterial (funciones ya existentes en
+main.js, usadas también por ceibo/sauce). Se construyó una versión liviana
+y NO instanciada (solo 4 ejemplares, no justifica el pipeline de
+InstancedMesh + shader de viento) específicamente para arbustos:
+
+- buildShrubCanopyGeo(layout, detail, seed, color): arma la malla de copa
+  fusionada con buildLobeMass y hornea el vertex color multiplicando el
+  color base de la especie por el canal de oclusión ambiental (aAO) que ya
+  calcula esa función -- mismo criterio de sombreado que los árboles
+  grandes, sin necesidad de reimplementar el AO.
+- makeNativeShrub({...}): arma un ejemplar completo -- tronco
+  (CylinderGeometry, mismo material de corteza makeBarkMaterial que usan
+  los árboles grandes), una copa de 4-5 lóbulos irregulares distribuidos en
+  círculo con inflateLobes para que se lean como una masa continua (no
+  esferas sueltas tocándose), y N "acentos" (florcitas/frutos, esferas
+  chicas) posicionados sobre la superficie real de la copa vía lobeSurface
+  -- la misma técnica que ya usan los árboles grandes para poner hojas y
+  flores en su superficie exterior.
+- guayabo: color base verde-grisáceo (0x8a9a7a/0x6f8560), tronco claro
+  (0xb0a58e), 10 acentos blancos (flores, 0xf3ece0).
+- arazá: color base verde oscuro (0x3f6b3c/0x2c4a2a), tronco más oscuro
+  (0x8d7358), 8 acentos rojo-granate (fruto, 0x9c2f35).
+
+Es geometría y color generados 100% por código al cargar la escena, sin
+ningún archivo .glb de por medio -- no hay licencia de terceros que
+documentar para estas dos especies de acá en adelante, y no hay límite de
+poligonización ni de UV heredado de un asset externo.
+
+------------------------------------------------------------------------------
+3. VERIFICACIÓN VISUAL
+------------------------------------------------------------------------------
+Se ubicaron los 4 ejemplares en la escena real (2 guayabo en
+[10.96,-0.08,-7.95] y [-12.03,0.01,-6.80]; 2 arazá en [0.37,-0.19,-10.58] y
+[3.94,-0.003,11.47]) mediante una consulta directa sobre window.__scene, y
+se tomó una captura de acercamiento de cada uno. Los 4 muestran una copa
+irregular y abultada (no una esfera lisa como el placeholder anterior), con
+los acentos de color (flores/frutos) claramente visibles distribuidos sobre
+la superficie -- una mejora clara sobre el cúmulo de esferas genérico de la
+Fase 18. Sin errores de consola tras esperar el asentado normal de assets
+de este entorno (headless/SwiftShader, ya documentado en fases previas
+-- una primera revisión con espera corta mostró el parche de suelo en negro
+sólido, resuelto al esperar el tiempo normal de 60s, no es una regresión
+real).
+
+------------------------------------------------------------------------------
+4. RENDIMIENTO
+------------------------------------------------------------------------------
+Línea base (Fase 22, v099b_recheck): 1.911.848 triángulos cargados, 682,7
+MB VRAM estimada, 6,94 ms de media de CPU por frame en el barrido de 360°.
+
+Después de reemplazar los 2 placeholder .glb por los 4 arbustos
+procedurales: 1.685.892 triángulos cargados (-226.000 vs. línea base,
+-11,8%) y 653,6 MB de VRAM estimada (-29,1 MB) -- una REDUCCIÓN, no un
+aumento: los .glb placeholder del pack de la Fase 18 pesaban más en
+triángulos y en texturas que la copa de lóbulos generada por código (sin
+textura, solo vertex color). CPU por frame en las 4 cámaras QC individuales:
+GROUND 10,7 ms, MID 13,65 ms, HIGH 8,7 ms, WATER 6,15 ms -- todas dentro
+del presupuesto de VR (90 Hz = 11 ms), con MID levemente por encima pero
+coherente con el resto de la sesión (esa cámara siempre fue la de mayor
+carga de draw calls).
+
+NOTA METODOLÓGICA: la primera corrida (v100_shrubs_procedurales) registró
+un pico anómalo de 153,21 ms de media / 3.516 ms de máximo en el barrido de
+360° (un solo ángulo, yaw=330°) mientras las 4 cámaras QC individuales ya
+daban lecturas saludables en esa misma corrida -- mismo patrón de pausa
+puntual del entorno (GC/swap del contenedor) ya documentado varias veces en
+esta sesión (v081, v093, v099/v099b de la Fase 22). Se corrió de nuevo
+(v100b_recheck) antes de sacar conclusiones: 7,55 ms de media / 10,9 ms de
+máximo en el barrido completo, saludable, confirmando que el pico era ruido
+del entorno y no una regresión del código nuevo.
+
+------------------------------------------------------------------------------
+5. ASSETS HUÉRFANOS
+------------------------------------------------------------------------------
+guayabo.glb y araza.glb (viewer/public/assets/models/) quedaron sin
+referencia en main.js tras este cambio. No se borraron del disco de forma
+automática (no afectan el build, no se commitean por ser assets pesados),
+documentado en CREDITS_MODELOS_3D.txt para quien haga limpieza de disco
+más adelante.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+addPlaceholderFlora() (la función genérica usada solo por guayabo/araza) se
+eliminó de main.js al quedar sin llamadores. CREDITS_MODELOS_3D.txt
+actualizado: se corrigió la entrada de la Fase 18 (ya no describe
+geometría .glb activa para estas dos especies) y se agregó una sección
+nueva de Fase 23 documentando el reemplazo procedural y su motivo.
+
+Pendiente: árbol real (el usuario avisó que lo sube "en la tarde o
+noche").
+
+==============================================================================

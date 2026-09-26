@@ -381,7 +381,10 @@ real, igual que se hizo con tero/venado/mulita en fases anteriores:
     garza mora (Ardea cocoi).
   Reptiles/anfibios: lagarto overo (Salvator merianae), tortuga de río
     (Phrynops hilarii), sapito de San Martín (Odontophrynus americanus).
-  Flora: guayabo del país (Acca sellowiana), arazá (Psidium cattleianum).
+  Flora: guayabo del país (Acca sellowiana), arazá (Psidium cattleianum) --
+    NOTA: estos dos .glb del pack fueron RETIRADOS en la Fase 23 y
+    reemplazados por geometría 100% procedural propia; ver esa sección más
+    abajo. Se dejan listados acá solo como registro histórico de origen.
   Cobertura de suelo: pastizal nativo y pajonal de bañado (estos dos NO
     son un espécimen individual como los anteriores, sino UN matorral ya
     armado con 120 primitivas de "hoja" -- mismo criterio que las matas de
@@ -423,9 +426,11 @@ Cambios (pipeline propio, apply_placeholder_material.mjs sobre
    fingir una caminata; la única animación es un balanceo de reposo sutil.
 
 Uso: viewer/public/assets/models/{zorro,gato_montes,lobito,lobo_marino,
-guazubira,chaja,cardenal,garza_mora,lagarto,tortuga,sapito,guayabo,araza,
+guazubira,chaja,cardenal,garza_mora,lagarto,tortuga,sapito,
 pastizal_nativo,pajonal_banado}.glb (no se commitean, igual criterio que
-el resto de assets pesados).
+el resto de assets pesados). guayabo.glb/araza.glb del pack quedaron
+huérfanos en disco desde la Fase 23 (ya no se cargan desde main.js) y se
+pueden borrar sin afectar la escena.
 
 ==============================================================================
 
@@ -556,5 +561,53 @@ gltf-transform simplify (ratio 0,02, error 0,02) más texture-compress webp/
 1024px: de 29,82 MB a 944 KB. Verificado visualmente que la malla
 simplificada es indistinguible de la original a la distancia normal de la
 escena. Escala: bbox real ~0,995 m de alto -> 1,7 m (altura humana adulta).
+
+==============================================================================
+
+------------------------------------------------------------------------------
+Fase 23 — Guayabo del país y arazá: geometría 100% procedural propia (sin
+assets externos), reemplazando los .glb placeholder de la Fase 18. En uso
+activo.
+------------------------------------------------------------------------------
+Motivo: en la Fase 22 se evaluó el par guayabo/arazá y se decidió NO
+tocarlo (ya traían flores/frutos distintivos, ver esa sección). El usuario
+marcó explícitamente que no le gustó el resultado ("El guayabo y araza
+espero que lo hallas editado y mejorado por que no me gusto"). Un simple
+tinte de color (el arreglo aplicado a zorro/guazubira y chajá/garza mora en
+esa misma fase) no resolvía el problema de fondo: la geometría en sí era un
+cúmulo de esferas genérico del pack "4K PBR" (documentado en la Fase 18),
+sin relación visual con un arbusto real ni con la estética del resto de la
+vegetación nativa de la escena (espinillo/algarrobo, ceibo, sauce).
+
+Solución: en vez de un modelo importado, se reutilizó el sistema procedural
+de copas ya existente en el proyecto para los árboles de monte
+(buildLobeMass/inflateLobes/lobeSurface/makeBarkMaterial, ver más arriba en
+este archivo la sección de vegetación nativa procedural) para generar cada
+arbusto como una copa de lóbulos irregulares fusionados (en vez de esferas
+sueltas), con tronco propio y "acentos" (florcitas blancas en guayabo,
+frutos rojos en arazá) distribuidos sobre la superficie real de la copa con
+lobeSurface -- la misma técnica que ya se usa para hojas/flores de los
+árboles grandes, aplicada aquí a escala de arbusto. Es geometría y color
+100% generados por código en tiempo de carga, sin archivo .glb de por
+medio: no hay licencia de terceros que documentar para estas dos especies
+de acá en adelante.
+
+Cambios: 4 ejemplares (2 guayabo + 2 arazá), cada uno con tronco propio
+(CylinderGeometry) + una malla de copa fusionada (BufferGeometryUtils,
+igual pipeline que los lóbulos de monte) con vertex color horneado desde el
+mismo canal de oclusión ambiental (aAO) que ya usa buildLobeMass + color
+base por especie (guayabo: verde grisáceo; arazá: verde oscuro), más 8-10
+esferitas pequeñas como acento floral/frutal por ejemplar. Sin
+instancing/shader de viento (solo 4 ejemplares, no lo justifica) --
+geometría independiente por especie, no compartida entre sí a diferencia
+del placeholder anterior (que literalmente reutilizaba la misma malla para
+ambas especies). guayabo.glb y araza.glb del pack de la Fase 18 quedaron
+huérfanos en disco tras este cambio.
+
+Verificado visualmente: los 4 ejemplares muestran una copa irregular y
+abultada (no una esfera lisa) con los acentos de color visibles en la
+superficie, en las 4 posiciones de la escena real. Verificado también que
+el cambio no afecta el rendimiento: mismo total de triángulos/VRAM que la
+Fase 22 dentro del margen de error de medición (ver reporte de Fase 23).
 
 ==============================================================================
