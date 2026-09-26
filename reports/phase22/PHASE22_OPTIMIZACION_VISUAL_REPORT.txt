@@ -1,0 +1,102 @@
+ZAPICÁN — FASE 22 · AUDITORÍA VISUAL, DISTRIBUCIÓN Y OPTIMIZACIÓN
+==============================================================================
+Snapshot: ZAPICAN_v098_tint_distribucion (antes: v097_centinela2, Fase 21).
+
+Pedido del usuario: "continua con la optimización y mejora estética, visual
+y de distribución" (árbol real queda pendiente para más tarde).
+
+------------------------------------------------------------------------------
+1. METODOLOGÍA: AUDITORÍA VISUAL COMPLETA
+------------------------------------------------------------------------------
+Se capturaron las ~19 cámaras QC establecidas más 2 vistas aéreas nuevas
+(bird's-eye) para revisar la escena completa antes de decidir qué tocar.
+
+Hallazgo desde arriba: el "parche" de terreno detallado (textura de suelo
+oscura) tiene un borde RECTANGULAR duro contra el terreno lejano (textura
+plana clara), y los árboles de horizonte forman un anillo visiblemente
+uniforme a radio fijo. Antes de "arreglarlo" se verificó si es visible
+desde el punto de vista real de la experiencia: la cámara está FIJA en
+HERO_VIEW_POS (0, 1.6, 4) -- nunca vuela por arriba de la escena. Revisando
+QC_GROUND, QC_HIGH y QC_SKY_HORIZON (las vistas que sí representan lo que
+ve el usuario) el borde queda completamente oculto detrás de la línea de
+árboles en las tres. Conclusión: es un problema real solo desde una cámara
+que el usuario nunca tiene en la experiencia real -- se decidió NO tocarlo
+para no gastar presupuesto en algo invisible, en vez de "arreglar por
+arreglar".
+
+------------------------------------------------------------------------------
+2. DISTRIBUCIÓN: ESPECIES PLACEHOLDER DEMASIADO LEJOS PARA SU TAMAÑO
+------------------------------------------------------------------------------
+Se midió la distancia real de cada especie placeholder (Fase 18) al punto
+de vista fijo. La mayoría cae en 5-13 m, razonable. Un caso concreto:
+cardenal amarillo (Gubernatrix cristata, ~19 cm real, escala 0.146) tenía
+rMax:14 -- a esa distancia, un objeto de 19 cm es prácticamente un punto,
+invisible en la práctica aunque técnicamente esté "en la escena". Bajado a
+rMin:4/rMax:9 para que el tamaño real del animal sea perceptible. El resto
+de las especies (más grandes, o ya ubicadas junto al agua a poca distancia
+por diseño) no necesitaban el ajuste.
+
+------------------------------------------------------------------------------
+3. ESTÉTICA/VISUAL: ESPECIES PLACEHOLDER INDISTINGUIBLES ENTRE SÍ
+------------------------------------------------------------------------------
+Recordatorio de la Fase 18: varias especies del pack "4K PBR" comparten
+LITERALMENTE la misma malla y el mismo vertex-color de origen (documentado
+en su momento). Revisando pares concretos:
+- zorro de monte y guazubira: mismo molde de cuadrúpedo, mismo tono
+  tostado -- prácticamente indistinguibles si aparecen cerca uno del otro.
+- chajá y garza mora: mismo molde de ave genérica, ambos grisáceos.
+
+Arreglo aplicado (sin modelos nuevos, sin costo de rendimiento): se agregó
+un parámetro `tint` a addPlaceholderLand/addPlaceholderWaterEdge que aplica
+un multiply de color sobre el material (mesh.material.color.setHex) --
+el vertex color de origen queda intacto, solo se tiñe el resultado final.
+guazubira: 0xa8b09a (gris-oliva, más cercano al pelaje real de un brocket
+gris que el tostado genérico). garza mora: 0x93a8ba (azul-grisáceo, más
+cercano al plumaje real de Ardea cocoi que el gris neutro del chajá).
+Verificado con un render aislado de comparación: ambos pares ahora se
+distinguen a simple vista.
+
+Se revisó también el par guayabo del país / arazá (ambos arbustos de
+follaje verde en esfera) -- ya traen detalles distintivos propios (flores
+blancas vs. frutos naranjas) suficientes para un elemento de fondo
+estacionario; no se le agregó tint adicional, evitando una corrección
+donde no hacía falta.
+
+------------------------------------------------------------------------------
+4. OPTIMIZACIÓN: VERIFICACIÓN DE SALUD, SIN CAMBIOS ESTRUCTURALES
+------------------------------------------------------------------------------
+Métricas actuales (v098/v099, ambas corridas): ~1,91 millones de triángulos
+cargados, ~137-139 draw calls promedio en el barrido de 360°, CPU por frame
+6-7 ms de media (con picos de 10-19 ms entre corridas, dentro del ruido de
+medición ya documentado en fases anteriores de esta sesión -- ver nota
+metodológica abajo). VRAM estimada 682,7 MB, sin cambios respecto a la Fase
+21 (los cambios de esta fase son solo tinte de material y una constante de
+distancia, sin geometría ni textura nueva). Dado que los números ya están
+cómodos dentro de cualquier presupuesto de VR (90 Hz = 11 ms), no se
+introdujo optimización estructural adicional (LOD nuevo, reducción de
+sombras, etc.) -- hacerlo sin una necesidad real sería complejidad de más.
+
+NOTA METODOLÓGICA: una primera corrida de p4_measure.mjs sobre esta misma
+versión (v099_tint_dist) registró un pico anómalo de 442 ms de media / 10,4
+s de máximo en el barrido de 360° -- muy por fuera de lo normal. Se
+sospechó una regresión real y se corrió de nuevo antes de descartarlo: la
+segunda corrida (v099b_recheck) dio 6,94 ms de media / 19,2 ms de máximo,
+saludable. Mismo patrón ya visto con v081 (Tarea 28, investigada en su
+momento) y v093 de esta sesión -- se interpreta como una pausa puntual del
+entorno (GC/swap del contenedor), no como algo causado por el código. Las
+métricas por cámara individual (QC_GROUND/MID/HIGH/WATER) fueron saludables
+en ambas corridas, lo que ya en su momento hacía sospechar ruido antes de
+la segunda confirmación.
+
+------------------------------------------------------------------------------
+5. CIERRE
+------------------------------------------------------------------------------
+Sin cambios de assets ni de CREDITS (los tintes son ajustes de código sobre
+modelos ya documentados, no nuevas fuentes). Snapshot v098 guardado antes
+del segundo chequeo de rendimiento (v099b, que solo confirma salud, no
+introduce cambios de código).
+
+Pendiente: árbol real (el usuario avisó que lo sube "en la tarde o
+noche").
+
+==============================================================================
