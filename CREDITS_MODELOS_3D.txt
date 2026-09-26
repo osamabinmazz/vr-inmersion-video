@@ -277,4 +277,27 @@ triángulos. No se investigó más a fondo si el error de escala del archivo
 de Dundee era corregible de forma simple, dado que el otro candidato ya
 cumplía sin ese problema.
 
+------------------------------------------------------------------------------
+Roca dispersa (detalle de terreno) — modelo real, en uso activo
+------------------------------------------------------------------------------
+Título:    "006-rock-lp"
+Autor:     waffen2009 (https://sketchfab.com/waffen2009)
+Fuente:    https://sketchfab.com/3d-models/006-rock-lp-b71c650f5b1c47a793aa444adfcc8684
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/) — permite
+           uso comercial con atribución.
+Uso:       viewer/public/assets/models/rock.glb (no se commitea, igual
+           criterio que el resto de assets pesados). A diferencia de la
+           fauna, es un prop inerte sin comportamiento: se carga una sola
+           vez con GLTFLoader y se dibujan 30 copias con un único
+           InstancedMesh (mismo material/geometría compartidos), mucho más
+           barato que clonar 30 veces como se hace con la fauna.
+Cambios:   convertido de la carpeta scene.gltf+scene.bin+texturas a un solo
+           .glb, y optimizado con gltf-transform (texturas 2048px → 512px
+           WebP) de 2,62 MB a 76 KB. Geometría sin tocar (210 triángulos,
+           1 malla). Escala: el archivo mide ~0,45 m de ancho con scale:1
+           tal cual viene (sin bug de unidades, solo una escala de
+           modelado arbitraria) -- se usa esa medida como "roca mediana"
+           de referencia y se varía por instancia (0,35x-1,65x) para dar
+           variedad natural de tamaños al dispersarlas.
+
 ==============================================================================

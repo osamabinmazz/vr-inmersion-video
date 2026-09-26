@@ -1,0 +1,68 @@
+ZAPICÁN — FASE 16 · ROCAS DISPERSAS COMO DETALLE DE TERRENO
+==============================================================================
+Snapshot: ZAPICAN_v092_rocks (antes: v091_venado_swap, Fase 15).
+
+Segundo punto del orden establecido por el usuario: "agregar la roca como
+detalle disperso del terreno".
+
+------------------------------------------------------------------------------
+1. EL MODELO
+------------------------------------------------------------------------------
+"006-rock-lp" de waffen2009 (CC-BY-4.0), recibido como carpeta
+scene.gltf+scene.bin+texturas (formato de exportación estándar de
+Sketchfab, no un .glb único). 210 triángulos, 1 malla, material PBR
+completo (baseColor+metallicRoughness+normal+emissive, las 4 texturas a
+2048px). El archivo no tenía bug de escala -- solo una escala de modelado
+arbitraria (~0,45 m de ancho tal cual viene con scale:1).
+
+------------------------------------------------------------------------------
+2. POR QUÉ INSTANCEDMESH Y NO EL PATRÓN DE FAUNA
+------------------------------------------------------------------------------
+A diferencia de todos los modelos reales anteriores (fauna, con estado y
+comportamiento propio por individuo), una roca es un prop completamente
+inerte: no necesita posición/rotación individual manejada por código de
+animación, ni un fallback procedural, ni tryUpgradeToModel. Se optó por un
+único THREE.InstancedMesh que comparte la misma geometría/material entre
+las 30 copias -- mucho más barato en CPU/memoria que clonar 30 veces con
+GLTFLoader (el mecanismo que sí tiene sentido para fauna, donde cada
+individuo necesita su propio AnimationMixer/estado).
+
+------------------------------------------------------------------------------
+3. OPTIMIZACIÓN Y ESCALA
+------------------------------------------------------------------------------
+Convertido de la carpeta de exportación a un solo .glb con gltf-transform,
+y optimizado (texturas 2048px → 512px WebP, suficiente para una roca chica
+sin ser la pieza central de ninguna toma) de 2,62 MB a 76 KB -- se carga
+una sola vez sin importar cuántas copias se dispersen.
+
+Cada instancia usa una escala aleatoria entre 0,35x y 1,65x del tamaño de
+referencia (~0,45 m de ancho), dando un rango de ~16 cm a ~74 cm -- variedad
+natural de piedra chica a algún que otro pedrón, sin que domine la escena.
+30 rocas dispersas en la llanura abierta (mismo generador scatterPositions
+que usa la vegetación, evita agua y zonas cercanas a los marcadores/POI).
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores nuevos de
+consola (mismo warning de timing de texturas ya documentado). Confirmado
+en la escena real: InstancedMesh con las 30 copias esperadas, visible en
+captura de la cámara QC_HIGH dispersa de forma natural por la llanura sin
+agruparse ni superponerse con la vegetación existente.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — v091 (sin rocas) vs v092 (30 rocas, InstancedMesh)
+------------------------------------------------------------------------------
+                          v091              v092
+  Triángulos cargados   1.003.104        1.009.444   (+6.340, ≈210×30 exacto)
+  Mallas                   516               518      (+2)
+  VRAM estimada          533,1 MB          538,5 MB   (+5,4 MB, 4 texturas
+                                                       WebP 512² compartidas
+                                                       entre las 30 copias)
+
+Cero errores nuevos de consola. Costo mínimo como se esperaba de un
+InstancedMesh: la geometría (210 tris) y las 4 texturas de 512px se cargan
+una sola vez sin importar cuántas copias se dibujen -- el único costo por
+instancia es la matriz de transformación (16 floats), prácticamente gratis.
+
+==============================================================================
