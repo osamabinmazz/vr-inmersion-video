@@ -1,0 +1,83 @@
+ZAPICÁN — FASE 21 · SEGUNDA ESTATUA DECORATIVA
+==============================================================================
+Snapshot: ZAPICAN_v097_centinela2 (antes: v096_centinela, Fase 20).
+
+------------------------------------------------------------------------------
+1. QUÉ LLEGÓ Y CÓMO SE RESOLVIÓ LA CONFUSIÓN
+------------------------------------------------------------------------------
+El usuario subió un .glb con nombre de archivo genérico (hash), sin texto.
+Dado que el turno anterior había quedado pendiente un modelo de árbol
+(tree.obj, llegado vacío -- 76 bytes, sin geometría), se inspeccionó el
+archivo antes de asumir que era ese árbol. Resultado: NO es un árbol -- es
+otra figura de la misma línea de estatuillas comerciales que "El Centinela"
+(Fase 20), en pose de caminata cargando un atado de varas/lanzas, con la
+misma base con placa y el mismo estilo de tocado de plumas genérico.
+
+Además de la confusión de contenido, el archivo pesaba 983.816 triángulos
+en una sola malla -- más de la mitad del presupuesto de triángulos de toda
+la escena junta (que en ese momento rondaba 1,89 millones). Se le presentó
+la situación al usuario con 4 opciones (agregarla decorativa, usarla junto
+a El Centinela, descartarla, o esperar el árbol real); eligió "otro
+centinela más, decorativo": una segunda estatua puramente decorativa, sin
+la mecánica de despertar/caminar de la Fase 20.
+
+------------------------------------------------------------------------------
+2. REDUCCIÓN DE POLÍGONOS
+------------------------------------------------------------------------------
+gltf-transform optimize con simplify (algoritmo meshoptimizer, ratio 0,02,
+error 0,02) + weld previo + texture-compress webp/1024px: de 983.816 a
+23.688 triángulos (-97,6%) y de 29,82 MB a 944 KB. Verificado con un render
+aislado antes/después de la reducción: la malla simplificada es
+visualmente indistinguible de la original a la distancia normal de la
+escena (mismo nivel de reducción, proporcionalmente, que "El Centinela" en
+la Fase 20, cuyo archivo de origen ya venía más liviano).
+
+------------------------------------------------------------------------------
+3. INTEGRACIÓN
+------------------------------------------------------------------------------
+Prop estático puro (gltfLoader.load directo, sin behavior ni mecánica de
+transformación) -- a diferencia de El Centinela, este SÍ es "solo
+decorativo" como pidió el usuario. Ubicado con scatterPositions en un punto
+distinto al de El Centinela (rMin 8 / rMax 16 desde el centro de la
+escena), escala corregida de bbox real (~0,995 m alto) a 1,7 m (altura
+humana adulta).
+
+------------------------------------------------------------------------------
+4. VALIDACIÓN
+------------------------------------------------------------------------------
+Sintaxis verificada con esbuild. Smoke test: cero errores/warnings nuevos
+de consola. Confirmado cargado y visible en la escena real (búsqueda por
+firma de geometría, 23.688 triángulos). Captura de la ubicación real: la
+estatua es visible entre la vegetación circundante, sin manchones negros
+ni geometría rota, tal como se esperaba tras la verificación aislada.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO — v097 (sin la segunda estatua) vs v098 (con ella)
+------------------------------------------------------------------------------
+                          v097            v098
+  Triángulos cargados   1.888.160       1.911.768   (+23.608, coincide con
+                                                     los 23.688 tris del
+                                                     archivo, diferencia
+                                                     mínima por dedup)
+  VRAM geometría          115,4 MB        117,5 MB   (+2,1 MB)
+  VRAM texturas           537,0 MB        547,7 MB   (+10,7 MB)
+  VRAM estimada total     669,9 MB        682,7 MB   (+12,8 MB, +1,9%)
+  CPU por frame (media/máx) 4,85/11,8 ms  6,58/12,2 ms (dentro del ruido de
+                                                        medición entre
+                                                        corridas ya visto en
+                                                        fases anteriores)
+
+Costo limpio y aislado, como se esperaba de agregar un único prop estático
+ya optimizado. Cero errores de consola.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con las mismas salvedades que "El
+Centinela": procedencia/licencia desconocidas y vestimenta/iconografía
+genérica no representativa de la cultura material real del pueblo Charrúa.
+
+Sigue pendiente: el árbol real (tree.obj llegó vacío, sin geometría) --
+esperando que el usuario lo vuelva a exportar/subir.
+
+==============================================================================

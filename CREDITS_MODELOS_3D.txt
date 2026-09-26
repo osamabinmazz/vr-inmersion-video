@@ -531,3 +531,30 @@ esqueleto ~1,0 m de alto) -- corregidos a 1,7 m (altura humana adulta) por
 separado.
 
 ==============================================================================
+
+------------------------------------------------------------------------------
+Segunda estatua decorativa (misma línea comercial que El Centinela) —
+PROCEDENCIA Y LICENCIA DESCONOCIDAS, salvedad de precisión cultural. En uso
+activo, solo decorativa (sin mecánica de despertar/caminar).
+------------------------------------------------------------------------------
+Archivo: viewer/public/assets/models/estatua_centinela2.glb. Subido
+directamente por el usuario (nombre de archivo genérico tipo hash, sin texto
+ni fuente declarada), pensando inicialmente que era un modelo de árbol
+("tree.obj" había llegado vacío en un envío anterior) -- al inspeccionarlo
+resultó ser otra figura de la misma línea de estatuillas comerciales que "El
+Centinela" (Fase 20): mismo estilo de base con placa, misma iconografía de
+tocado de plumas genérico. Mismas salvedades que esa entrada: sin licencia
+Creative Commons verificable, y vestimenta/iconografía que NO corresponde a
+la cultura material real del pueblo Charrúa (estilo genérico de stock). El
+usuario decidió usarla igual, como segunda estatua puramente decorativa (sin
+la mecánica de despertar/caminar de El Centinela).
+
+Cambios: el archivo de origen pesaba 983.816 triángulos en una sola malla
+-- un solo prop hubiera pesado más de la mitad del presupuesto de triángulos
+de toda la escena junta. Reducido a 23.688 triángulos (97,6%) con
+gltf-transform simplify (ratio 0,02, error 0,02) más texture-compress webp/
+1024px: de 29,82 MB a 944 KB. Verificado visualmente que la malla
+simplificada es indistinguible de la original a la distancia normal de la
+escena. Escala: bbox real ~0,995 m de alto -> 1,7 m (altura humana adulta).
+
+==============================================================================
