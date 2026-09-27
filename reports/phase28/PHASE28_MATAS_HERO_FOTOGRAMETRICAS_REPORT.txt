@@ -1,0 +1,120 @@
+ZAPICÁN — FASE 28 · MATAS "HERO" FOTOGRAMÉTRICAS (scanned_plants.glb)
+==============================================================================
+Snapshot: ZAPICAN_v105_matas_hero (antes: v104_pastizal_real, Fase 27).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+El usuario: "continua, mejora la geometria de la cosas / el que es
+demasiado pesado, abjale la cidad para doper usarlo" -- retomando el pack
+fotogramétrico "scanned_plants_and_grass" que la Fase 27 había dejado sin
+usar por ser demasiado pesado para instanciar (264.494 triángulos totales,
+11 mallas de 11.329 a 55.173 triángulos cada una).
+
+------------------------------------------------------------------------------
+2. TRES INTENTOS DE SIMPLIFICACIÓN (documentados porque cada uno enseñó
+   algo real sobre las limitaciones de decimar fotogrametría)
+------------------------------------------------------------------------------
+Herramienta: @gltf-transform/functions (simplifyPrimitive, sobre
+meshoptimizer/MeshoptSimplifier), instalado en el entorno para esta fase.
+
+  a) Recorte agresivo (~5-10% del original, multi-pasada, lockBorder:
+     false): las matas de pasto (briznas finas y espinosas) se
+     redondearon en "globos" verdes lisos sin silueta reconocible.
+     Verificado en vivo en la escena (no en aislamiento): se vieron como
+     esferas brillantes flotando sobre el pasto. Diagnóstico: sin bordes
+     bloqueados y empujado tan lejos, el simplificador prioriza conservar
+     volumen/área sobre las púas finas -- que son justo lo que define la
+     silueta de una mata de pasto real. Descartado.
+
+     (Nota de proceso: la primera vez que se vio este resultado se
+     sospechó erróneamente que el problema era el material/alphaMode, y
+     se perdió tiempo verificando alphaMode/alphaCutoff/roughness del
+     archivo simplificado -- todos correctos. El verdadero error fue de
+     identificación: la cámara de verificación apuntaba, por coincidencia
+     de rango de triángulos, a un arbusto procedural PREEXISTENTE de la
+     escena, no a la malla nueva. Se corrigió el método de verificación
+     etiquetando cada InstancedMesh nuevo con un nombre único
+     ("scanned_" + nombre de malla) antes de seguir iterando, en vez de
+     identificar por conteo de triángulos.)
+
+  b) lockBorder:true (para no cruzar costuras de UV, pensando que ahí
+     estaba el problema): al revés de lo esperado, casi no redujo nada --
+     un escaneo fotogramétrico tiene tantas costuras de UV internas que
+     casi todo borde queda bloqueado, y las mallas se quedaron en 75-100%
+     del original. Descartado por no resolver el problema (seguía
+     demasiado pesado para el propósito).
+
+  c) Elegido: pasada única, sin bordes bloqueados, objetivo mucho menos
+     agresivo (40% del original en vez de 5-10%) y sin reintentar --
+     quedarse ANTES de que el simplificador empiece a comerse las púas,
+     en vez de exprimir hasta el mínimo triángulo posible. Verificado
+     visualmente en la escena real con el nuevo etiquetado por nombre:
+     matas espinosas y reconocibles, sin geometría redondeada ni
+     artefactos.
+
+------------------------------------------------------------------------------
+3. RESULTADO DE LA SIMPLIFICACIÓN
+------------------------------------------------------------------------------
+Solo las 11 mallas pesadas se tocaron (materiales "Ground_Cover_Bunch" y
+"Purple_Flower"); las 6 mallas ya livianas del archivo (white_flower.001,
+5_leaf_ground_plant, Grass_Blades, Grass_Cloves, dandelion -- 8 a 355
+triángulos) quedaron intactas.
+
+Triángulos por malla: 11.329->4.531, 15.888->6.355, 24.250->15.049,
+22.056->16.163, 19.790->8.376, 36.566->16.676, 22.075->16.256,
+22.075->16.193, 13.516->9.506, 20.855->8.341, 55.173->22.069 -- -47% en
+promedio sobre las 11 mallas pesadas (264.494 -> ~140.000 triángulos
+totales del archivo).
+
+Recentrado: el archivo traía las 17 mallas como piezas de UN escaneo
+fotogramétrico compartido, cada una desplazada a su posición original en
+esa escena (minY entre -7,3 y +6,6 según la malla) en vez de nacer en su
+propia base. Se recentró cada malla en X/Z y se bajó para que su punto
+más bajo quedara en y=0 -- mismo criterio que el corte de pedestal de las
+estatuas (Fase 25) -- así el código existente (`position.y =
+groundY(x,z)`) funciona sin cambios.
+
+------------------------------------------------------------------------------
+4. INTEGRACIÓN
+------------------------------------------------------------------------------
+16 InstancedMesh (uno por malla, nombrados "scanned_" + nombre original
+para poder identificarlos sin ambigüedad), colocados con `scatterPositions`
+cerca del área visible (radio 1,5-9 m, lejos del agua y los POI) -- mismo
+criterio que grass_tufts.glb: cobertura puntual "hero", no una alfombra
+general, porque son mallas mucho más pesadas que las del pasto principal.
+
+Conteos: 18 instancias para cada una de las 5 mallas livianas (flores/
+tréboles/briznas sueltas), 5 para cada una de las 9 "Ground_Cover_Bunch",
+6 para cada una de las 2 "Purple_Flower". Escala 0,10-0,15 calibrada a ojo
+contra el tamaño local del archivo (~4 m de ancho en las mallas pesadas).
+castShadow y receiveShadow activados (a diferencia del pasto principal):
+son elementos más grandes y cercanos a cámara, se benefician de sombra
+propia.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO
+------------------------------------------------------------------------------
+v107_realgrass_20000 (Fase 27) -> v108_scanned_plants:
+  - Triángulos cargados: 2.192.664 -> 2.937.137 (+744.473).
+  - VRAM: 737 -> 798,7 MB (+61,7 MB).
+  - Barrido de 360°: 4,88 -> 6,94 ms de media de CPU por frame; 10,1 ->
+    11,5 ms de máximo -- suba real pero dentro del margen ya tolerado en
+    fases anteriores (la Fase 26 había aceptado un máximo de 14,8 ms).
+
+Sin anomalías -- no hizo falta una segunda medición de control.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 28 (los tres
+intentos de simplificación y por qué se descartaron los dos primeros,
+triángulos por malla, recentrado, integración, rendimiento) y con una
+corrección a la nota de la Fase 27 que decía "no usado por ahora".
+
+Pendiente: dos mallas ya livianas del pack (Grass_Blades, Grass_Cloves)
+podrían sumarse a la cobertura general si en el futuro se quiere más
+variedad -- no se tocó su conteo en esta fase. Sigue abierto lo de
+siempre: árbol/sauce real y cuervillo de cañada u otra ave adicional.
+
+==============================================================================

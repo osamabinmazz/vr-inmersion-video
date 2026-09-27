@@ -364,8 +364,8 @@ eligió el primero para la cobertura principal por ser el único con
 triángulos por card lo bastante bajos (20-74) para instanciar a miles de
 copias -- el pack "scanned_plants" (264.494 triángulos totales, algunas
 mallas de más de 50.000 triángulos cada una) es fotogramétrico y
-demasiado pesado para esta capa; queda disponible para una eventual mata
-"hero" puntual cerca de cámara, no usado por ahora.
+demasiado pesado para esta capa. Reducido y usado como matas "hero"
+puntuales en la Fase 28 (ver esa sección).
 
 El archivo trae 15 cards de pasto útiles (9 "main" cortas en 3 variantes de
 textura ya pintada -- fresh/dry/aged -- y 6 "tall" altas en 2 variantes)
@@ -414,6 +414,85 @@ escena), barrido de 360°: 4,88 ms de media / 10,1 ms de máximo de CPU por
 frame (MEJOR que el sistema procedural: antes 5,85/14,8 ms). Cámaras QC
 individuales: GROUND 9,3, MID 13,65, HIGH 6,2, WATER 4,15 ms -- todas
 dentro del margen ya tolerado en fases anteriores.
+
+------------------------------------------------------------------------------
+Fase 28 — Matas "hero" fotogramétricas (scanned_plants.glb), en uso activo
+------------------------------------------------------------------------------
+Título:    "Scanned plants and grass" (free download)
+Fuente:    entregado por el usuario junto con grass_pack_lowpoly y
+           simple_grass_chunks en la Fase 27; sin autor/licencia propios
+           declarados en el archivo (solo metadata "glTF-Transform" del
+           conversor). Se documenta como entregado directamente por el
+           usuario, mismo criterio que el pack "fauna_flora_uruguay" de la
+           Fase 18.
+Uso:       viewer/public/assets/models/scanned_plants.glb (no se commitea,
+           igual criterio que el resto de assets pesados). 16 InstancedMesh
+           (uno por malla), conteos de 5 a 18 instancias sueltas cerca del
+           área visible -- cobertura puntual "hero", no una alfombra
+           general.
+
+Pedido del usuario: "continua, mejora la geometria de la cosas / el que es
+demasiado pesado, abjale la cidad para doper usarlo" -- retomando el pack
+fotogramétrico que la Fase 27 había dejado sin usar por demasiado pesado
+(264.494 triángulos totales, 11 mallas de 11.329 a 55.173 triángulos cada
+una).
+
+Reducido con @gltf-transform/functions (simplifyPrimitive, sobre
+meshoptimizer) -- proceso de tres intentos, documentado porque cada uno
+enseñó algo real sobre las limitaciones de decimar fotogrametría:
+
+  1) Recorte agresivo (~5-10% del original) con lockBorder:false y
+     multi-pasada: las matas de pasto (briznas finas y espinosas) se
+     redondearon en "globos" lisos sin silueta reconocible. Diagnóstico:
+     sin bordes bloqueados y empujado tan lejos, el simplificador
+     prioriza conservar volumen/área sobre las púas finas -- que son
+     justo lo que define la silueta de una mata de pasto real. Descartado
+     tras verificación visual en la escena.
+  2) lockBorder:true (para no cruzar costuras de UV): al revés, casi no
+     redujo nada -- un escaneo fotogramétrico tiene tantas costuras
+     internas que casi todo borde queda bloqueado, y la malla se quedó en
+     75-100% del original. Descartado por no resolver el problema
+     original (seguía demasiado pesado).
+  3) Elegido: pasada única, sin bordes bloqueados, objetivo mucho menos
+     agresivo (40% del original en vez de 5-10%) y sin reintentar --
+     quedarse ANTES de que el simplificador empiece a comerse las púas,
+     no exprimir hasta el mínimo triángulo posible. Resultado verificado
+     visualmente en la escena real (no en aislamiento): matas espinosas y
+     reconocibles, sin geometría redondeada ni artefactos de textura.
+
+Triángulos por malla (Ground_Cover_Bunch y Purple_Flower, únicas
+recortadas -- las 6 mallas livianas del archivo, 8-355 triángulos, se
+dejaron intactas): 11.329->4.531, 15.888->6.355, 24.250->15.049,
+22.056->16.163, 19.790->8.376, 36.566->16.676, 22.075->16.256,
+22.075->16.193, 13.516->9.506, 20.855->8.341, 55.173->22.069 (-47% en
+promedio sobre las 11 mallas pesadas, sin tocar las livianas).
+
+Recentrado: el archivo traía las 17 mallas como piezas de UN escaneo
+fotogramétrico compartido, cada una desplazada a su posición original en
+esa escena (minY entre -7,3 y +6,6 según la malla) en vez de nacer en su
+propia base -- se recentró cada malla en X/Z y se bajó para que su punto
+más bajo quedara en y=0 (mismo criterio que el corte de pedestal de las
+estatuas, Fase 25), así el código existente (`position.y = groundY(x,z)`)
+funciona sin cambios. Escala: 0,10-0,15 calibrado a ojo contra el tamaño
+local del archivo (~4 m de ancho en las mallas pesadas).
+
+Bug de identificación evitado (aprendido en la Fase 27): antes de escribir
+la tabla final de nombre->instancias, se cargó el archivo con un log
+temporal en gltf.scene.traverse para confirmar los nombres reales que
+asigna THREE.GLTFLoader ("Object_N", sin sanear -- a diferencia de
+grass_pack.glb, estos nombres no tienen espacios ni sufijos con punto) y
+el nombre del material de cada malla, antes de dar por buena la tabla.
+
+Rendimiento (v107_realgrass_20000 -> v108_scanned_plants): 2.937.137
+triángulos cargados (antes 2.192.664, +744.473), 798,7 MB VRAM (antes 737).
+Barrido de 360°: 6,94 ms de media / 11,5 ms de máximo de CPU por frame
+(antes 4,88/10,1 -- suba real pero dentro del margen ya tolerado en fases
+anteriores, p.ej. la Fase 26 aceptó un máximo de 14,8 ms). Sin anomalías.
+
+Pendiente: el pack "scanned_plants" queda con dos mallas ya livianas
+(Grass_Blades, Grass_Cloves) que podrían sumarse a la cobertura general si
+en el futuro se quiere aún más variedad; no se tocó su conteo en esta
+fase.
 
 ==============================================================================
 
