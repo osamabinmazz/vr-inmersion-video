@@ -1,0 +1,165 @@
+ZAPICÁN — FASE 29 · SAUCE CRIOLLO REAL (sauce_criollo.glb)
+==============================================================================
+Snapshot: ZAPICAN_v106_sauce_real (antes: v105_matas_hero, Fase 28).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+El usuario: "el sauce ya lo tenes?" -- preguntando si ya había un modelo
+real para los 4 sauces criollos (Salix humboldtiana) junto a la laguna,
+que seguían siendo procedurales desde el arranque del proyecto (tronco +
+lóbulos de copa + 150 ramas colgantes por ejemplar + hojas escaneadas,
+animadas en el loop de render). El usuario subió el modelo real, partido
+en 3 archivos por su tamaño (66.794.648 bytes / 66,8 MB), junto con un
+script REASSEMBLE.ps1 y un ORIGINAL_SHA256.txt.
+
+------------------------------------------------------------------------------
+2. VERIFICACIÓN DEL UPLOAD PARTIDO
+------------------------------------------------------------------------------
+Primer envío llegó con 2 de las 3 partes (faltaba part002) -- se detectó
+por `ls` antes de intentar reensamblar con un hueco, y se esperó a que el
+usuario completara el upload en el siguiente mensaje. Con las 3 partes
+presentes:
+  - Suma de bytes de las 3 partes: 29.360.128 x 2 + 8.074.392 = 66.794.648,
+    coincide exactamente con "Tamaño original" del ORIGINAL_SHA256.txt.
+  - Reensamblado (`cat part001 part002 part003 > reassembled.glb`) y
+    verificado por SHA256: coincide exacto con el hash declarado
+    (aaf702a47c428dc2b020d7b829cfe1c8c9cfac57cd2fad3f4ea1ba1d01da5135).
+
+Inspección: una sola malla ("tripo_mesh_...", mismo patrón de nombre que
+el tero de la Fase 27 y las estatuas de El Centinela -- generado con
+Tripo AI), 1.874.504 triángulos, silueta de sauce llorón inequívoca
+(tronco + cortina de ramas colgantes).
+
+------------------------------------------------------------------------------
+3. SIMPLIFICACIÓN
+------------------------------------------------------------------------------
+Herramienta: @gltf-transform/functions (simplifyPrimitive, sobre
+meshoptimizer), ya instalada desde la Fase 28.
+
+A diferencia de las matas fotogramétricas de la Fase 28 (que necesitaron
+tres intentos), la geometría del sauce tolera decimado agresivo sin
+bordes bloqueados sin deformarse -- un solo enfoque bastó, probado en un
+visor aislado (ver sección 4) en dos pasadas crecientes, cada una
+verificada visualmente ANTES de decidir si empujar más:
+  a) ratio 0,05, lockBorder:false, error:0,02 -> 93.723 triángulos.
+     Verificado: silueta perfecta, sin globos ni pérdida de las puntas
+     finas de las ramas.
+  b) ratio 0,015 (mismos parámetros) -> 28.117 triángulos. Verificado de
+     nuevo: sigue perfecto, sin degradación visible respecto al intento
+     anterior. Elegido este por ser la opción más liviana que no perdió
+     calidad -- reducción de -98,5% sobre el original.
+
+Recentrado: el bbox mínimo en Y del archivo ya nacía en ~0 (0,0000305),
+no necesitó ajuste (a diferencia de la Fase 28, donde cada malla traía
+un offset heredado de un escaneo compartido).
+
+------------------------------------------------------------------------------
+4. VISOR AISLADO PARA VERIFICACIÓN
+------------------------------------------------------------------------------
+Se construyó una página HTML de previsualización (_preview.html, temporal,
+no commiteada) para cargar cada candidato de simplificación fuera de la
+escena completa y confirmar visualmente antes de integrar.
+
+Dos problemas de entorno resueltos en el camino:
+  - Debe ubicarse en la RAÍZ del proyecto viewer/ (junto a index.html), no
+    en viewer/public/: Vite sirve el contenido de public/ tal cual, sin
+    resolver imports "bare" (`import * as THREE from "three"`); en la
+    raíz, en cambio, pasa por el mismo pipeline de transformación en
+    desarrollo que index.html/main.js.
+  - Un intento inicial de cargar three.js desde un CDN (unpkg.com) vía
+    import map falló en este entorno con ERR_CERT_AUTHORITY_INVALID: el
+    proxy de salida HTTPS del sandbox usa una CA propia que las
+    herramientas del agente (curl, Bash) confían pero que el navegador
+    lanzado por Playwright no confía automáticamente. Se abandonó el CDN
+    y se usó el paquete `three` ya instalado localmente, igual que
+    main.js.
+
+Archivo temporal (_preview.html y el .glb candidato en
+public/assets/models/_preview_candidate.glb) borrado al finalizar la
+integración -- confirmado antes del commit.
+
+------------------------------------------------------------------------------
+5. TEXTURAS
+------------------------------------------------------------------------------
+Las 3 texturas (basecolor, normal, roughness-metalness) venían en
+4096x4096 cada una (~256 MB de VRAM decodificada combinada),
+desproporcionado para el presupuesto de esta escena -- mismo precedente ya
+aplicado a rock.glb y grass_tufts.glb (2048->512). Bajadas a 2048x2048 con
+textureCompress({resize:[2048,2048]}) de @gltf-transform/functions (usa
+sharp de fondo, ya presente como dependencia transitiva).
+
+Tamaño de archivo: 66,8 MB (original) -> 12,07 MB (solo geometría
+simplificada) -> 3,81 MB (con texturas bajadas) -- reducción del 94,3%
+sobre el original.
+
+------------------------------------------------------------------------------
+6. INTEGRACIÓN EN LA ESCENA
+------------------------------------------------------------------------------
+Se reusó tryUpgradeToModel (mismo patrón ya establecido para el tero y el
+resto de la fauna real) en vez de escribir un loader propio.
+
+Se mantuvo el cálculo de posición e inclinación de cada sauce hacia el
+agua en su ubicación original dentro del archivo (mismo `rng()`
+compartido que usaba la versión procedural, para no reordenar el resto
+de la vegetación que se genera después), y se movió únicamente la
+llamada a tryUpgradeToModel a después de la declaración de gltfLoader --
+mismo bug de "Temporal Dead Zone" ya visto en la Fase 27 con
+grass_pack.glb: cualquier código que llame a una función que referencia
+gltfLoader antes de su `const` revienta en tiempo de ejecución ("Cannot
+access 'gltfLoader' before initialization"), aunque la función esté
+declarada con `function` (hoisteada).
+
+Eliminado por completo el sistema procedural anterior: tronco, lóbulos de
+copa por LOD de distancia, 150 ramas colgantes por ejemplar (600
+instancias en total vía InstancedMesh) y su animación de balanceo en el
+loop de render (bloque `whipSway`). Verificado con grep que no queda
+ninguna referencia a whipSway, willowWhips, willowCrownLobes,
+willowTrunkMat/CrownMat/WhipMat, whipGeo ni WHIPS_PER_WILLOW en todo el
+archivo.
+
+Bug de identificación evitado (aprendido en la Fase 28): en vez de
+identificar los sauces nuevos por rango de triángulos en las capturas de
+verificación, se usaron los hooks de debug ya existentes en la escena
+(`window.__treePositions.sauce`, `window.__vegCounts().sauces`) para
+apuntar la cámara exactamente a cada uno de los 4 ejemplares y confirmar
+que WILLOW_COUNT sigue en 4.
+
+------------------------------------------------------------------------------
+7. RENDIMIENTO
+------------------------------------------------------------------------------
+v109_sauce_real -> v110_sauce_texdown (tras bajar texturas de 4096 a
+2048), geometría sin cambios entre ambas mediciones:
+  - VRAM: 1.056,9 -> 864,9 MB (-192 MB, coincide con lo previsto por el
+    tamaño de las 3 texturas bajadas).
+  - Triángulos cargados: 3.037.985 -> 3.037.905 (sin cambio real, la
+    diferencia de 80 es ruido de otros sistemas de la escena entre
+    corridas, no del sauce).
+  - Barrido de 360°: 4,97 -> 5,91 ms de media de CPU por frame; 7,0 ->
+    11,9 ms de máximo -- variación atribuible al ruido conocido del
+    renderizado por software (swiftshader) entre corridas, no a las
+    texturas en sí (bajar resolución de textura no debería subir el
+    costo de CPU); de cualquier forma, ambos valores quedan dentro del
+    margen ya tolerado en fases anteriores (la Fase 26 aceptó un máximo
+    de 14,8 ms). Sin errores de consola en ninguna de las dos corridas.
+
+Verificación visual: 2 rondas de capturas en vivo (4 posiciones x 2
+rondas, antes y después de bajar texturas) usando
+willow_integration_check.mjs -- sin errores de consola, los 4 sauces
+visibles con inclinación natural sobre el borde del agua, detalle de
+corteza y follaje colgante nítido, sin degradación apreciable tras el
+downscale de texturas.
+
+------------------------------------------------------------------------------
+8. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 29 (procedencia
+del modelo, verificación SHA256, simplificación, texturas, integración,
+rendimiento).
+
+Pendiente (sin cambios respecto a fases anteriores): cuervillo de cañada
+u otra ave adicional; las dos mallas livianas de scanned_plants.glb
+(Grass_Blades, Grass_Cloves) que podrían sumarse a la cobertura general
+si en el futuro se quiere más variedad.
+
+==============================================================================

@@ -496,6 +496,81 @@ fase.
 
 ==============================================================================
 
+Fase 29 — Sauce criollo real (sauce_criollo.glb), reemplaza el procedural
+------------------------------------------------------------------------------
+Título:    "Willow tree 3d model" (generado con Tripo AI, mismo pipeline que
+           el tero de la Fase 27 y las estatuas de El Centinela).
+Fuente:    generado por el usuario, sin licencia de terceros (contenido
+           creado para este proyecto) -- mismo criterio de la Fase 18 para
+           assets sin licencia CC. Subido partido en 3 archivos por su
+           tamaño (66.794.648 bytes / 66,8 MB) junto con un script
+           REASSEMBLE.ps1 y un ORIGINAL_SHA256.txt; reensamblado y
+           verificado por SHA256 exacto
+           (aaf702a47c428dc2b020d7b829cfe1c8c9cfac57cd2fad3f4ea1ba1d01da5135)
+           antes de tocarlo.
+Uso:       viewer/public/assets/models/sauce_criollo.glb (no se commitea,
+           mismo criterio que el resto de assets pesados). Los 4 sauces
+           criollos (Salix humboldtiana) junto a la laguna, antes
+           procedurales.
+
+Pedido del usuario: "el sauce ya lo tenes?" -- retomando un pendiente de
+varias fases atrás (los 4 sauces seguían siendo procedurales: tronco +
+lóbulos de copa + 150 ramas colgantes por ejemplar + hojas escaneadas,
+animadas en el loop de render). El usuario subió el modelo real.
+
+Reducido con @gltf-transform/functions (simplifyPrimitive, sobre
+meshoptimizer) -- a diferencia de la Fase 28 (matas fotogramétricas, tres
+intentos), la geometría del sauce tolera decimado agresivo sin bordes
+bloqueados sin deformarse: una sola malla de 1.874.504 triángulos, probada
+en un visor aislado (ver más abajo) en dos pasadas crecientes, ambas
+verificadas visualmente ANTES de decidir:
+  1) ratio 0,05, lockBorder:false, error:0,02 -> 93.723 triángulos. Silueta
+     perfecta (tronco + cortina de ramas colgantes intacta), sin globos ni
+     pérdida de las puntas finas de las ramas.
+  2) ratio 0,015 (mismos parámetros) -> 28.117 triángulos. Verificado de
+     nuevo: sigue perfecto, sin degradación visible respecto al intento
+     anterior. Elegido este por ser la opción más liviana que no perdió
+     calidad (-98,5% sobre el original).
+
+Recentrado: el bbox mínimo en Y del archivo ya nacía en ~0 (0,0000305), no
+necesitó ajuste -- a diferencia de la Fase 28, donde cada malla traía un
+offset heredado de un escaneo compartido.
+
+Texturas: basecolor, normal y roughness-metalness venían en 4096x4096 cada
+una (~256 MB de VRAM decodificada combinada, desproporcionado para el
+presupuesto de esta escena -- precedente ya aplicado a rock.glb y
+grass_tufts.glb, 2048->512). Bajadas a 2048x2048 con
+textureCompress({resize:[2048,2048]}) de @gltf-transform/functions (usa
+sharp). Tamaño de archivo: 66,8 MB (original) -> 12,07 MB (solo geometría
+simplificada) -> 3,81 MB (con texturas bajadas), una reducción del 94,3%
+sobre el original.
+
+Integración: se reusó tryUpgradeToModel (mismo patrón que el tero y el
+resto de la fauna real) en vez de escribir un loader propio -- se mantuvo
+la posición e inclinación de cada sauce hacia el agua (mismo `rng()`
+compartido que usaba la versión procedural, para no reordenar el resto de
+la vegetación) en su ubicación original en el archivo, y se movió
+únicamente la llamada a tryUpgradeToModel a después de la declaración de
+gltfLoader (bug de "Temporal Dead Zone" ya visto en la Fase 27 con
+grass_pack.glb: cualquier código que llame a una función que referencia
+gltfLoader antes de su `const` revienta en tiempo de ejecución, aunque la
+función esté declarada con `function` y por lo tanto "hoisteada").
+Eliminado por completo el sistema procedural anterior (tronco, lóbulos de
+copa, 150 ramas colgantes por ejemplar y su animación en el loop de
+render).
+
+Bug de identificación evitado (aprendido en la Fase 28): en vez de
+identificar los sauces nuevos por rango de triángulos en las capturas de
+verificación, se usaron los hooks de debug ya existentes en la escena
+(`window.__treePositions.sauce`, `window.__vegCounts().sauces`) para
+apuntar la cámara exactamente a cada uno de los 4 ejemplares.
+
+Rendimiento (v109_sauce_real -> v110_sauce_texdown, tras bajar texturas):
+ver mediciones en el reporte de Fase 29. Barrido de 360° sin anomalías en
+ambas mediciones (antes y después de bajar texturas).
+
+==============================================================================
+
 ------------------------------------------------------------------------------
 Fase 18 — Especies placeholder (pack "fauna_flora_uruguay_3d_4K_PBR"),
 en uso activo, con la salvedad honesta que sigue
