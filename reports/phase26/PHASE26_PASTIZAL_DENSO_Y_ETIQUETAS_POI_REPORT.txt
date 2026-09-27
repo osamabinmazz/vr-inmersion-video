@@ -1,0 +1,123 @@
+ZAPICÁN — FASE 26 · PASTIZAL MÁS DENSO Y ORDEN DE ETIQUETAS POI
+==============================================================================
+Snapshot: ZAPICAN_v103_pastizal_denso (antes: v102_estatua2_pies_visibles, Fase 25 v2).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+Dos pedidos del usuario en esta fase:
+
+a) "y" -- confirmación para intercambiar la posición de las etiquetas POI
+   (marcador de nombre flotante, sin figura humana todavía) de "Guyunusá" y
+   "Abayubá".
+
+b) "Revisa la calidad de todo lo que aparentemente esta pronto" -- pedido
+   abierto de auditoría de calidad de toda la escena. Durante la auditoría,
+   el usuario confirmó en vivo el hallazgo más visible con: "Repite
+   vegetacion para cubrir el suelo por ejemplo".
+
+------------------------------------------------------------------------------
+2. CAMBIO A) -- ORDEN DE ETIQUETAS POI
+------------------------------------------------------------------------------
+Intercambiadas las posiciones de "Guyunusá" y "Abayubá" en el array POI
+(las tres son solo carteles de texto flotantes; las figuras humanas siguen
+pospuestas, sin modelo 3D todavía):
+
+  Antes:  Abayubá  -> [0, 0, -4.5]     Guyunusá -> [2.5, 0, -3]
+  Ahora:  Guyunusa -> [0, 0, -4.5]     Abayubá  -> [2.5, 0, -3]
+
+Cambio puramente cosmético, sin impacto de rendimiento ni de geometría.
+
+------------------------------------------------------------------------------
+3. AUDITORÍA DE CALIDAD
+------------------------------------------------------------------------------
+Se construyó un script de auditoría automatizada (Playwright + Chromium
+headless, patrón ya establecido en fases anteriores) que recorre:
+  - Barrido de las 8 cámaras QC generales (QC_GROUND, QC_MID, QC_HIGH,
+    QC_WATER, QC_WORST_CASE, QC_SKY_HORIZON, QC_FAUNA_WIDE, QC_FAUNA_WATER).
+  - Inventario de objetos por firma de triángulos (estatua2, El Centinela
+    estático, tero) y por marcador userData (placeholders de fauna Fase 18,
+    arbustos de guayabo/arazá).
+  - Acercamientos individuales a cada estatua, cada uno de los 4 teros y
+    cada uno de los 4 arbustos procedurales.
+
+Resultado:
+  - Cero errores de consola tras 60 s de escena asentada.
+  - Los 16 grupos de fauna placeholder (Fase 18) tienen `hasRealModel: true`
+    -- no quedan geometrías crudas sin actualizar sin detectar.
+  - Ambas estatuas, los 4 teros y los 4 arbustos de guayabo/arazá se ven
+    correctamente apoyados en el terreno, sin geometría flotante ni
+    corrupción visible en los acercamientos revisados.
+  - Único defecto real encontrado: grandes parches de tierra marrón
+    desnuda visibles en el claro central de la pradera y otras zonas,
+    con los mechones de pasto demasiado espaciados para leer como
+    pastizal continuo a distancia normal de cámara -- confirmado por el
+    usuario como el problema a resolver.
+
+------------------------------------------------------------------------------
+4. CAMBIO B) -- DENSIDAD DE PASTO (GRASS_COUNT)
+------------------------------------------------------------------------------
+Causa raíz: `GRASS_COUNT = 2600` resultaba insuficiente para que la
+distribución `clusteredScatter` y la geometría de mechón (cono de 3 caras,
+3 cm de radio) cubrieran visualmente el suelo de forma continua.
+
+Ya existía en el código un comentario de una fase anterior que documentaba
+que ensanchar el mechón (probado hasta 4,8 cm) se descartó por verse peor
+("pirámide de cartón"), y que la densidad -- no el ancho -- es la palanca
+que funciona. Se siguió ese criterio ya validado.
+
+Subido en dos pasos, verificando visualmente y por rendimiento en cada uno:
+  1. 2600 -> 4200 (+61%): mejora visible, sobre todo en vista aérea; a
+     nivel de suelo seguía habiendo tierra desnuda visible en primer plano.
+  2. 4200 -> 6500 (+55% adicional, +150% total): vista aérea (QC_HIGH) casi
+     sin tierra visible; vista a nivel de suelo (QC_WORST_CASE)
+     notablemente más cubierta, aunque persiste algo de tierra desnuda en
+     el primerísimo plano -- límite inherente de una geometría de mechón
+     angosta y espaciada, ya aceptado como trade-off en el comentario
+     preexistente del código.
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO
+------------------------------------------------------------------------------
+Línea base (Fase 25 v2, GRASS_COUNT=2600, dentro de v102): no medida de
+forma aislada en esta fase (el cambio de estatuas ya había sido validado).
+
+GRASS_COUNT=4200 (v105_grass_4200.json): 1.739.872 triángulos cargados,
+656,3 MB VRAM, barrido 360°: 5,17 ms de media / 9,8 ms de máximo de CPU por
+frame. Cámaras QC individuales: GROUND 7,7 ms, MID 9,05 ms, HIGH 4,65 ms,
+WATER 3,9 ms.
+
+GRASS_COUNT=6500 (v106_grass_6500.json): 1.750.516 triángulos cargados
+(+10.644 respecto a 4200, coincide con las instancias de pasto agregadas),
+656,5 MB VRAM (sin cambio real -- la memoria la dominan las texturas, no
+la geometría de instancias). Barrido 360°: 5,85 ms de media / 14,8 ms de
+máximo de CPU por frame (leve suba respecto a 4200, dentro del margen ya
+tolerado en fases anteriores). Cámaras QC individuales: GROUND 6,5 ms
+(mejoró), MID 8,5 ms (mejoró), HIGH 6,6 ms (subió ~2 ms), WATER 6,1 ms
+(subió ~2,2 ms). Sin anomalías -- ninguna cámara ni el máximo del barrido
+se acerca a un problema de framerate. Rendimiento confirmado sano para el
+valor final de 6500.
+
+------------------------------------------------------------------------------
+6. LÍMITE ENCONTRADO
+------------------------------------------------------------------------------
+Con geometría de mechón angosta (cono de 3 caras, 3 cm), incluso a 6500
+instancias queda algo de tierra visible en el primerísimo plano de la
+cámara a nivel de suelo. Ensanchar el mechón ya se probó en una fase
+anterior y se descartó por verse peor. Subir aún más la densidad seguiría
+mejorando la cobertura a costa de más triángulos y de más instancias por
+metro cuadrado -- se aceptó 6500 como balance entre cobertura visual y
+margen de rendimiento, coherente con el criterio ya documentado en el
+código.
+
+------------------------------------------------------------------------------
+7. CIERRE
+------------------------------------------------------------------------------
+Pendiente (sin cambios en esta fase, mencionado para continuidad): árbol/
+sauce real (el usuario lo sube más tarde); cuervillo de cañada u otra ave
+adicional (abierto desde la Fase 24); revisión visual individual más
+exhaustiva de las ~11 especies de fauna placeholder restantes (confirmado
+que todas tienen modelo real asignado, no revisadas una por una en detalle
+en esta fase).
+
+==============================================================================
