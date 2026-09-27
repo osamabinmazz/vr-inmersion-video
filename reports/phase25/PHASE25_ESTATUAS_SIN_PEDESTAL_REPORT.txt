@@ -96,16 +96,54 @@ ms (antes 12,4), HIGH 7,35 ms (antes 9,55), WATER 4,95 ms (antes 7,5). Sin
 anomalías en esta corrida -- no hizo falta una segunda medición de control.
 
 ------------------------------------------------------------------------------
-6. CIERRE
+6. ACTUALIZACIÓN (v2) -- "QUE SE VEAN LOS PIES"
 ------------------------------------------------------------------------------
-CREDITS_MODELOS_3D.txt actualizado con una sección de Fase 25 documentando
-el pedido, el diagnóstico de malla no soldada, la técnica de corte por
-altura, las alturas de corte elegidas para cada archivo, la recalibración
-de escala, y la limitación de calidad pendiente en la segunda estatua.
+El usuario resubió el archivo ORIGINAL de la segunda estatua (983.816
+triángulos, verificado por UUID idéntico al ya documentado: mismo
+"tripo_mesh_c0ddebbf-..." que la versión ya simplificada de la Fase 21) y
+pidió mejorar la calidad tras ver el resultado de 1.240 triángulos.
 
-Pendiente: árbol/sauce real (el usuario lo sube más tarde); archivo
-original de 983.816 triángulos de la segunda estatua (si el usuario quiere
-mejorar su calidad); cuervillo de cañada u otra ave adicional (abierto
-desde la Fase 24).
+Se repitió el proceso completo sobre el archivo original en vez del ya
+simplificado: corte por altura de vértice PRIMERO, simplificación DESPUÉS
+-- así el presupuesto de triángulos de la simplificación se gasta solo en
+lo que sobrevive al corte, no en el pedestal que se va a tirar.
+
+Diagnóstico adicional: un primer intento a y=0,13 (análogo proporcionalmente
+al 0,20 de la v1) eliminó los pies enteros, no solo el pedestal -- un
+análisis de color de textura (clasificando vértices por tono de piel vs.
+roca según la textura base muestreada en cada UV) confirmó que los pies
+llegan casi hasta el fondo del pedestal (y~0,003 unidades locales): piel y
+roca se superponen en altura, así que estructuralmente NINGÚN corte por
+altura puede preservar el 100% de los dedos y eliminar el 100% de las
+piedras sueltas del pedestal al mismo tiempo -- hay que elegir un balance.
+
+Calibración visual iterativa (0,02 / 0,035 / 0,05 / 0,06 / 0,07): a y=0,06
+la placa "THE SENTINEL" y el borde recto del pedestal desaparecen por
+completo, los pies quedan íntegros con dedos visibles, y no se desprende
+ninguna piedra suelta como geometría flotante (a partir de 0,07 ya
+empiezan a soltarse fragmentos). Elegido y=0,06.
+
+Resultado: simplificado a 20.532 triángulos (antes 1.240), calidad
+corporal muy superior (headdress, musculatura, capa, todo con el detalle
+del archivo original), pies completos con dedos, sin plaqueta ni pedestal.
+Escala recalibrada nuevamente contra el nuevo bbox (~0,9395 m -> 1,7 m).
+
+Rendimiento (v103 -> v104_estatua2_pies_visibles): +19.252 triángulos
+(coincide con la diferencia 20.532-1.240), 656,2 MB VRAM (sin cambio real),
+5,52 ms de media / 11,8 ms de máximo en el barrido de 360°, cámaras QC
+individuales sanas (GROUND 6,9, MID 9,7, HIGH 7,1, WATER 6,2 ms). Sin
+anomalías, corrida limpia.
+
+------------------------------------------------------------------------------
+7. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 25 (pedido,
+diagnóstico de malla no soldada, técnica de corte por altura, alturas
+elegidas, recalibración de escala) y su actualización v2 (rehecho desde el
+archivo original para preservar los pies, con el análisis de color de
+textura que explica por qué no hay un corte perfecto posible).
+
+Pendiente: árbol/sauce real (el usuario lo sube más tarde); cuervillo de
+cañada u otra ave adicional (abierto desde la Fase 24).
 
 ==============================================================================

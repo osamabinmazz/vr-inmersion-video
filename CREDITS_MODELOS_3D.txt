@@ -678,4 +678,34 @@ Rendimiento: -25.858 triángulos totales (3.410 de El Centinela + 22.448 de
 la segunda estatua) -- mejora neta medida en las 4 cámaras QC y en el
 barrido de 360° (ver reporte de Fase 25).
 
+ACTUALIZACIÓN (Fase 25, v2) -- pedido del usuario "Que se vean los pies":
+el corte de y=0,20 sobre el archivo YA simplificado (23.688 triángulos)
+dejaba los pies como un muñón sin dedos, además de muy poco detalle
+corporal general (solo 1.240 triángulos sobrevivían). El usuario resubió
+el archivo ORIGINAL de 983.816 triángulos -- se repitió todo el proceso
+sobre ese archivo:
+  1) Corte por altura sobre el original (no sobre una versión ya
+     simplificada), para no desperdiciar presupuesto de triángulos en el
+     pedestal antes de saber cuánto necesita el cuerpo.
+  2) Análisis de color de textura (clasificación de vértices por tono de
+     piel vs. roca, muestreando la textura base en cada UV) confirmó que
+     los pies llegan casi hasta el fondo del pedestal (y~0,003 unidades
+     locales) -- piel y roca se superponen en altura, así que NINGÚN corte
+     por altura puede preservar el 100% de los dedos Y eliminar el 100% de
+     las piedras sueltas al mismo tiempo.
+  3) Se calibró visualmente probando 0,02 / 0,035 / 0,05 / 0,06 / 0,07:
+     a 0,06 la placa "THE SENTINEL" y el borde recto del pedestal
+     desaparecen del todo, los pies quedan completos con dedos visibles, y
+     no se desprende ninguna piedra suelta como geometría flotante (recién
+     a partir de 0,07 empiezan a soltarse fragmentos). Elegido y=0,06.
+  4) Simplificado DESPUÉS del corte (no antes): ~20.500 triángulos, todo el
+     presupuesto para el cuerpo en vez de repartido con el pedestal ya
+     descartado.
+Resultado: de 1.240 a 20.532 triángulos, pies completos con dedos visibles,
+mismo criterio de ausencia de plaqueta/pedestal que la v1. Escala
+recalibrada de nuevo contra el nuevo bbox (~0,9395 m -> 1,7 m). Rendimiento:
++19.252 triángulos sobre la v1 de esta misma fase, sin impacto real en CPU
+por frame (5,52 ms de media / 11,8 ms de máximo en el barrido de 360°,
+cámaras QC sanas).
+
 ==============================================================================
