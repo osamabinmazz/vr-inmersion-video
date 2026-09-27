@@ -1,0 +1,157 @@
+ZAPICÁN — FASE 27 · PASTIZAL CON MALLAS REALES (grass_pack.glb)
+==============================================================================
+Snapshot: ZAPICAN_v104_pastizal_real (antes: v103_pastizal_denso, Fase 26).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+El usuario, tras la Fase 26 (densidad de pasto subida de 2600 a 6500):
+"Mejora la calidad de ese pastizal". En la misma conversación, mientras se
+evaluaban mejoras procedurales, mandó 5 fotos reales de una costa con
+pasto/juncos densos y arqueados, con mezcla de hoja seca y verde en la
+misma mata: "Tenemos que llegar a esto". Poco después subió 3 packs de
+modelos de pasto reales (grass_pack_lowpoly_game-ready.glb,
+scanned_plants_and_grass_free_download.glb, simple_grass_chunks.glb) sin
+más texto, indicando que la solución debía construirse a partir de esos
+archivos.
+
+------------------------------------------------------------------------------
+2. DOS INTENTOS PROCEDURALES DESCARTADOS
+------------------------------------------------------------------------------
+Antes de recibir los packs reales, se probaron dos mejoras puramente
+procedurales sobre el mismo mechón (cono de 3 caras) de la Fase 26:
+
+  a) Mata multi-brizna: fusionar 3-4 conos finos y arqueados
+     (bendBladeGeometry, la misma técnica de los juncos) por posición, con
+     tinte de vértice paja/verde por brizna. Al comparar el resultado
+     contra una captura "antes" en la misma cámara, la vista ancha (QC_
+     WORST_CASE) salió PIXEL A PIXEL idéntica a la anterior: la mata
+     multi-brizna mejora lo que se dibuja en CADA posición, pero no acerca
+     las posiciones entre sí, así que los huecos de tierra entre matas no
+     cambiaron en nada.
+
+  b) Subir la densidad de posiciones (10.000, minDist 0,12) para cerrar
+     esos huecos. Mejoró la cobertura pero seguía sin parecerse a las
+     fotos de referencia, que no tienen tierra visible en ningún punto.
+
+Diagnóstico: el problema de fondo no era la forma de cada mechón ni
+cuántos había, sino que ninguna geometría generada a mano (por más que se
+retoque densidad, ancho o curvatura) iba a leer como pasto real. Hacía
+falta una malla real -- que es justo lo que el usuario proveyó a
+continuación.
+
+------------------------------------------------------------------------------
+3. ELECCIÓN DEL PACK
+------------------------------------------------------------------------------
+De los 3 archivos subidos, inspeccionados con @gltf-transform/core:
+
+  - grass_pack_lowpoly_game-ready.glb: 15 cards de pasto útiles (9 "main"
+    cortas en 3 variantes de textura ya pintada -- fresh/dry/aged -- y 6
+    "tall" altas en 2 variantes), 20-74 triángulos cada una. Elegido para
+    la cobertura principal: es el único lo bastante liviano por instancia
+    para repetirse miles de veces.
+  - scanned_plants_and_grass_free_download.glb: 264.494 triángulos
+    totales, mallas individuales de hasta 55.173 triángulos -- calidad
+    fotogramétrica excelente pero demasiado pesado para instanciar en
+    masa. Queda disponible para una eventual mata "hero" puntual cerca de
+    cámara; no se usó en esta fase.
+  - simple_grass_chunks.glb: es el MISMO archivo de origen que ya está
+    integrado desde una fase anterior como grass_tufts.glb (matas
+    suplementarias r12_a/b/c, 60 copias cada una) -- confirmado por los
+    mismos nombres de nodo y el mismo material "rostlinka12_2k". No aporta
+    nada nuevo sobre lo ya integrado.
+
+------------------------------------------------------------------------------
+4. INTEGRACIÓN
+------------------------------------------------------------------------------
+Reemplaza por completo la CAPA 3 procedural (el sistema de mechones/conos
+de las Fases 4 y 26). El archivo se calibra solo: la cadena de escalas del
+FBX de origen (0,01 en el nodo raíz de importación por 100 en el grupo
+"Grass" del Blender original) se cancela, así que el tamaño local de cada
+card ya viene en metros reales (0,25-0,46 m las cortas, 0,5-1,0 m las
+altas) -- no hizo falta recalibrar escala como con las estatuas de la
+Fase 25.
+
+Cada posición ya calculada por clusteredScatter (igual algoritmo de
+siempre) elige de forma síncrona qué card real le toca, ANTES de que
+resuelva el GLTFLoader: "fresh" en el bañado, "dry"/"aged" en la zona
+seca, una franja de cards "tall" dispersa para variar la altura -- misma
+lógica de humedad/parche que antes pintaba un tinte de vértice inventado,
+ahora eligiendo entre texturas ya pintadas de fábrica. Material recompuesto
+de BLEND a MASK (alphaCutoff 0,5), mismo criterio ya usado en
+grass_tufts.glb: BLEND sin ordenar por profundidad entre miles de
+instancias superpuestas da artefactos de transparencia.
+
+------------------------------------------------------------------------------
+5. BUG ENCONTRADO Y CORREGIDO: SANEAMIENTO DE NOMBRES
+------------------------------------------------------------------------------
+Primer intento: cargaba sin ningún error de consola, pero no se dibujaba
+NINGÚN pasto real -- el suelo quedó más pelado que con el sistema
+procedural que reemplazaba. Diagnosticado agregando un log temporal dentro
+de gltf.scene.traverse que imprimía cada nombre de malla recibido:
+THREE.GLTFLoader sanea los nombres del archivo (saca los espacios, y saca
+el punto de los sufijos ".001"/".002") -- "Grass main fresh.001_Grass_Mat_0"
+llega al código como "Grass_main_fresh001_Grass_Mat_0". La tabla de
+nombres usaba el nombre crudo tal cual aparece en el archivo .glb y no
+encontraba ninguna coincidencia, así que cada malla se descartaba en
+silencio. Corregido reescribiendo la tabla con los nombres saneados,
+verificado en vivo, y recién ahí se sacó el log de depuración.
+
+Segundo hallazgo, ya con el pasto cargando: también se detectó que
+`gltfLoader` se declara más abajo en el archivo que la sección de la CAPA
+3 (línea ~4570 contra ~2860) -- la llamada `gltfLoader.load(...)` no puede
+vivir junto al resto de esa capa por temporal dead zone de `const`. Se
+separó en dos partes: el cálculo síncrono de posiciones/variante se quedó
+en la CAPA 3 (no depende de gltfLoader), y la llamada real a
+gltfLoader.load() se movió más abajo, junto al loader de grass_tufts.glb
+(incluida su declaración local del array `dummy`, mismo patrón que el
+loader de rock.glb).
+
+------------------------------------------------------------------------------
+6. DENSIDAD Y LÍMITE DE LA CÁMARA AÉREA
+------------------------------------------------------------------------------
+Con los nombres corregidos, el pasto real cargaba pero la vista aérea
+(QC_HIGH) seguía leyendo como tierra con pasto salteado a 10.000
+posiciones (minDist 0,12 m). Confirmado que cada card es barata (20-74
+triángulos), se subió a 20.000 posiciones (minDist 0,09 m).
+
+Nota importante encontrada durante la revisión: la cámara aérea (QC_HIGH)
+sigue mostrando más tierra de la que se ve parado en la escena. Es un
+artefacto esperable de cualquier pasto en cards (planos verticales con
+textura recortada): vistos casi de canto desde arriba, ocupan una fracción
+mínima de píxeles, aunque desde altura de ojo se vean llenos. La vista a
+nivel de ojo (QC_GROUND/QC_WORST_CASE), que es la que de verdad representa
+la experiencia en primera persona, muestra la mejora con claridad.
+
+------------------------------------------------------------------------------
+7. RENDIMIENTO
+------------------------------------------------------------------------------
+v106_grass_6500 (procedural, línea base de la Fase 26) -> v107_realgrass_
+20000 (mallas reales, 20.000 posiciones):
+
+  - Triángulos cargados: 1.750.516 -> 2.192.664 (+442.148).
+  - VRAM: 656,5 -> 737 MB (+80,5 MB, las texturas del pack: 627,7 MB de
+    textura total en la escena).
+  - Barrido de 360°: 5,85 -> 4,88 ms de media de CPU por frame; 14,8 ->
+    10,1 ms de máximo -- MEJOR que el sistema procedural en ambos casos.
+  - Cámaras QC individuales: GROUND 9,3, MID 13,65, HIGH 6,2, WATER 4,15
+    ms -- dentro del margen ya tolerado en fases anteriores (HIGH y WATER
+    mejoraron; MID subió unos ms pero sigue lejos de comprometer el
+    framerate).
+
+Sin anomalías -- no hizo falta una segunda medición de control.
+
+------------------------------------------------------------------------------
+8. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 27 (autor,
+licencia CC-BY-4.0, fuente Sketchfab, pedido del usuario, elección del
+pack, bug de saneamiento de nombres y su corrección, densidad y
+rendimiento).
+
+Pendiente: árbol/sauce real (el usuario lo sube más tarde); cuervillo de
+cañada u otra ave adicional (abierto desde la Fase 24); evaluar si el pack
+"scanned_plants_and_grass" se usa más adelante para matas "hero" puntuales
+cerca de cámara (queda en el entorno pero sin integrar).
+
+==============================================================================

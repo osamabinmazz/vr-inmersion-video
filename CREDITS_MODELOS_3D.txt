@@ -337,6 +337,84 @@ MB a 63 KB. 5) escala: los archivos miden entre 0,98 y 2,29 m en su eje más
 largo tal cual vienen -- corregido con un factor ~0,0011 en el código para
 llevarlos a matas de ~0,15-0,30 m, tamaño de mata de pasto real.
 
+------------------------------------------------------------------------------
+Fase 27 — Pastizal principal: mallas reales (reemplaza la geometría
+procedural de la CAPA 3), en uso activo
+------------------------------------------------------------------------------
+Título:    "Grass pack (lowpoly, game-ready)"
+Autor:     LOLIPOP (https://sketchfab.com/lolipop_1707)
+Fuente:    https://sketchfab.com/3d-models/grass-pack-lowpoly-game-ready-422f42f618d342c6958b02613dc57403
+Licencia:  CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/) — permite
+           uso comercial con atribución.
+Uso:       viewer/public/assets/models/grass_pack.glb (no se commitea, igual
+           criterio que el resto de assets pesados). 15 InstancedMesh (uno
+           por variante de malla), ~15.800 instancias repartidas entre
+           ellos según humedad/parche del terreno.
+
+Pedido del usuario: tras la Fase 26 (subir la densidad del pasto
+procedural), pidió "Mejora la calidad de ese pastizal" y, en la misma
+conversación, mandó fotos reales de una costa con pasto/juncos densos,
+arqueados, con mezcla de hoja seca y verde en la misma mata ("Tenemos que
+llegar a esto"). Dos intentos procedurales previos (ensanchar el mechón,
+después fusionar 3-4 briznas en una mata) no alcanzaron: el problema no era
+la forma de cada mechón sino que ninguna geometría dibujada a mano iba a
+leer como pasto real. El usuario subió 3 packs de pasto reales
+(grass_pack_lowpoly, scanned_plants_and_grass, simple_grass_chunks); se
+eligió el primero para la cobertura principal por ser el único con
+triángulos por card lo bastante bajos (20-74) para instanciar a miles de
+copias -- el pack "scanned_plants" (264.494 triángulos totales, algunas
+mallas de más de 50.000 triángulos cada una) es fotogramétrico y
+demasiado pesado para esta capa; queda disponible para una eventual mata
+"hero" puntual cerca de cámara, no usado por ahora.
+
+El archivo trae 15 cards de pasto útiles (9 "main" cortas en 3 variantes de
+textura ya pintada -- fresh/dry/aged -- y 6 "tall" altas en 2 variantes)
+más una malla de referencia "Ground_Checker" y una figura humana de escala
+("Man ref"), ambas descartadas. El tamaño local de cada card ya viene
+calibrado en metros reales (0,25-0,46 m las cortas, 0,5-1,0 m las altas):
+la cadena de escalas del FBX de origen (0,01 en el nodo raíz de importación
+por 100 en el grupo "Grass" del Blender original) se cancela sola, así que
+no hizo falta recalibrar como con las estatuas de la Fase 25.
+
+Bug encontrado y corregido: THREE.GLTFLoader sanea los nombres de malla del
+archivo (saca espacios, saca el punto de los sufijos ".001"/".002") --
+"Grass main fresh.001_Grass_Mat_0" llega al código como
+"Grass_main_fresh001_Grass_Mat_0". La primera versión de la tabla de
+nombres usaba el nombre crudo del archivo y no encontraba ninguna
+coincidencia: el pasto real cargaba sin errores de consola pero no se
+dibujaba NADA (el suelo se veía más pelado que con el sistema procedural
+que reemplazaba). Diagnosticado agregando un log temporal dentro de
+gltf.scene.traverse que mostró el nombre real recibido; corregido
+reescribiendo la tabla con los nombres saneados y verificado en vivo antes
+de sacar el log de depuración.
+
+Cada posición ya calculada por clusteredScatter elige, de forma síncrona
+(antes de que resuelva el GLTFLoader), qué card le toca según humedad y
+ruido de parche -- "fresh" en el bañado, "dry"/"aged" en la seca, una
+franja de cards "tall" dispersa -- reemplazando el tinte de vértice
+inventado que usaba el sistema procedural por la textura ya pintada de
+cada variante real. Material recompuesto de BLEND a MASK (mismo criterio
+que grass_tufts.glb, por la misma razón: BLEND sin ordenar por profundidad
+entre miles de instancias superpuestas da artefactos).
+
+Densidad ajustada dos veces tras revisión visual: 10.000 posiciones
+(minDist 0,12 m) seguían leyendo como tierra con pasto salteado en la
+vista aérea; subido a 20.000 (minDist 0,09 m) una vez confirmado que cada
+card es barata (20-74 triángulos) y que había margen de sobra. Nota: la
+cámara aérea (QC_HIGH) sigue mostrando más tierra de la que se ve realmente
+parada en la escena -- es un artefacto esperable de cualquier pasto en
+cards tipo cruz (casi de canto visto desde arriba), no representa la
+experiencia real en primera persona. La vista a nivel de ojo (QC_GROUND/
+QC_WORST_CASE) es la referencia real y ahí la mejora es clara.
+
+Rendimiento (v106_grass_6500 procedural -> v107_realgrass_20000):
+2.192.664 triángulos cargados (antes 1.750.516), 737 MB VRAM (antes 656,5 —
+la diferencia son las texturas del pack, 627,7 MB de textura total en la
+escena), barrido de 360°: 4,88 ms de media / 10,1 ms de máximo de CPU por
+frame (MEJOR que el sistema procedural: antes 5,85/14,8 ms). Cámaras QC
+individuales: GROUND 9,3, MID 13,65, HIGH 6,2, WATER 4,15 ms -- todas
+dentro del margen ya tolerado en fases anteriores.
+
 ==============================================================================
 
 ------------------------------------------------------------------------------
