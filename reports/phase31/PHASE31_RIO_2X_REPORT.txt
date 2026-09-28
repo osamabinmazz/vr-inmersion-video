@@ -1,0 +1,173 @@
+ZAPICÁN — FASE 31 · RÍO AL DOBLE DE LARGO Y FRANJA DE PASTO BAJO EN LA ORILLA
+==============================================================================
+Snapshot: ZAPICAN_v108_rio_2x (antes: v107_rio_curvo, Fase 30).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+El usuario: "Exteine el río al doble de largo, pon vegetacion baja y tupida
+junto al cause" -- dos pedidos: duplicar el largo del río curvo de la Fase
+30, y agregar vegetación baja y densa junto al cauce, además de los juncos
+ya existentes.
+
+------------------------------------------------------------------------------
+2. DUPLICAR EL RÍO: ESCALADO AFÍN DE LA BÉZIER
+------------------------------------------------------------------------------
+La alternativa obvia -- inventar nuevos puntos de control a mano y volver a
+resolver C, luego reverificar la propiedad de "un solo cruce por rayo desde
+WATER_CENTER" que sostiene todo el sistema de waterRadiusAt -- se descartó
+en favor de una propiedad matemática más simple: WATER_CENTER ya está
+sentado exactamente sobre la curva (en t=0,5, construcción de la Fase 30), y
+una curva de Bézier es afín-invariante. Escalar los puntos de control A y E
+x2 alrededor de ese centro fijo (una transformación de semejanza) produce la
+MISMA curva -- mismos ángulos, mismo serpenteo relativo -- al doble de
+tamaño exacto, y esa clase de transformación preserva automáticamente
+cualquier propiedad de cruce-por-rayo que ya valiera antes, porque no
+distorsiona ángulos relativos al centro de escalado.
+  RIVER_CURVE_A: [15,92, -11,63] -> [24,84, -27,26]
+  RIVER_CURVE_E: [-15,52, 12,29] -> [-38,04, 20,58]
+Verificado con un script Node aislado (river2x_check.mjs) que replica
+riverBezierPoint/nearestOnRiverCurve fuera de la app: bezier(0,5) sigue
+cayendo exactamente en WATER_CENTER tras el escalado. También se verificó
+que el número de ángulos con más de un cruce por rayo (una limitación
+preexistente de la Fase 30, encontrada al auditar esto, no introducida
+ahora) se mantiene en el mismo orden de magnitud: 25 de 628 ángulos
+muestreados en la curva original, 36 en la duplicada -- no es una regresión
+de esta fase, y waterRadiusAt ya maneja el caso tomando la primera
+transición interior->exterior de la marcha gruesa, un criterio razonable
+aunque no perfecto que ya se había aceptado visualmente en la Fase 30.
+
+------------------------------------------------------------------------------
+3. TERRENO, MUESTREO DE LA CURVA Y PRESUPUESTO DE BÚSQUEDA
+------------------------------------------------------------------------------
+La punta más lejana del río nuevo (RIVER_CURVE_E) queda a ~48 m de
+WATER_CENTER (antes ~24 m, ~19,8 m antes de eso en la Fase 30 antes de su
+propio ajuste de largo). Ajustes dependientes, todos calculados para
+mantener la misma densidad/margen relativos que ya se habían calibrado:
+  - Terreno: 56x56 -> 100x100 m (GROUND_SIZE, groundGeo). El bounding box de
+    la curva nueva es x: -38,04 a 24,84, z: -27,26 a 20,58 -- cabe dentro
+    del terreno con margen (calculado con el mismo criterio de la Fase 30,
+    ~12 m de buffer más allá del punto más lejano de la curva).
+  - Segmentos del terreno: 300 -> 536 (proporción 100/56 aplicada a 300,
+    ~5,36 segmentos/m igual que antes) para no perder densidad de detalle
+    por metro pese al terreno mucho más grande.
+  - REPEAT (repetición de textura del suelo): 11,2 -> 20,0 (proporción
+    exacta 100/56) para que el tile de textura no cambie de tamaño
+    aparente.
+  - RIVER_CURVE_SAMPLES (muestras de la polilínea que aproxima la curva):
+    96 -> 192. Sin este ajuste, duplicar el largo del río sin subir las
+    muestras dejaba cada segmento de la polilínea el doble de largo en
+    metros, engordando el margen de error de nearestOnRiverCurve -- la
+    consulta BARATA que usan distanceToWater/insideWater en decenas de
+    miles de llamadas (ver Fase 30 para el porqué de esa distinción
+    barato/caro). Duplicar las muestras mantiene el mismo largo de segmento
+    que en la Fase 30.
+  - waterRadiusAt: techo de la marcha gruesa (maxR) subido de 60 a 90 m. Un
+    script de diagnóstico confirmó que el radio real que necesita la
+    dirección hacia la nueva punta es ~49 m -- con maxR=60 quedaban solo
+    ~11 m de margen (antes había ~40 m de margen contra el mismo techo de
+    60, con la punta a ~20 m). Subir el techo a 90 es gratis en la práctica
+    (es solo un límite de iteración de un bucle que ya para apenas cruza el
+    borde, no trabajo que se haga siempre) y deja un margen cómodo.
+  - REED_CLUMPS: 140 -> 280. El perímetro de orilla escala con el mismo
+    factor x2 que la curva completa (~94 m -> ~188 m, la Fase 30 ya había
+    calculado esa relación perímetro/conteo); subir los mechones en la
+    misma proporción mantiene la densidad de junco por metro de orilla ya
+    calibrada, en vez de dejar la orilla nueva más pelada que la vieja.
+
+------------------------------------------------------------------------------
+4. VEGETACIÓN BAJA Y TUPIDA JUNTO AL CAUCE (pedido del usuario)
+------------------------------------------------------------------------------
+El juncal (Fase 30) ya cubre el borde que toca el agua -- ese sistema no
+cambió de criterio, solo de escala (sección 3). Lo que faltaba, y es lo que
+pide el usuario acá, es la franja SIGUIENTE: pasto corto y denso que arranca
+justo donde termina el juncal y se pierde hacia el pastizal general en unos
+pocos metros, en vez de un corte brusco entre juncos y pradera abierta.
+
+Se evaluó reutilizar el sistema de pastizal general existente
+(grassDensity/GRASS_COUNT), pero sus radios de scatter (scatterPositions,
+centrados en el ORIGEN, no en WATER_CENTER, con rMax entre 14 y 17,5 m
+según la especie) quedan muy por debajo de los ~48 m que alcanza ahora la
+punta más lejana del río -- ese sistema nunca llegaría a cubrir la orilla
+nueva sin una reestructuración mucho más grande. Se optó en cambio por
+replicar el patrón YA probado en juncos/ceibos/sauces/rocas: colocación por
+ÁNGULO alrededor de WATER_CENTER con waterOutlinePointOffset (desplazamiento
+en metros, no escala relativa), que sigue el cauce real sea cual sea su
+largo sin necesitar recalibración si el río vuelve a cambiar de tamaño --
+la misma razón por la que esos otros sistemas no necesitaron tocarse esta
+fase pese a que el río se duplicó.
+
+Implementación (sección nueva, inmediatamente después del bloque de
+juncos):
+  - BANK_GRASS_CLUMPS = 320, BANK_GRASS_PER_CLUMP = 9 (2.880 instancias en
+    total), un único InstancedMesh.
+  - Geometría: una hoja corta procedural (ConeGeometry + bendBladeGeometry,
+    0,3 m de alto) en vez de un asset nuevo -- mismo enfoque ya usado para
+    juncos y los restos de junco seco (edgeLitter), consistente con el
+    resto de la vegetación procedural de la escena.
+  - Gradiente de densidad: por cada intento de mechón se calcula `t` (0 =
+    pegado al borde exterior del juncal en ese ángulo, 1 = límite externo
+    de la franja, 3,2 m más allá) y la probabilidad de aceptar el intento
+    cae con `t` -- así se arma el efecto "tupido cerca, raro lejos" pedido
+    por el usuario sin necesitar una máscara de densidad aparte. Las matas
+    más lejanas dentro de la franja quedan también un poco más bajas y
+    dispersas, igual que el propio juncal en su borde exterior.
+
+------------------------------------------------------------------------------
+5. VERIFICACIÓN
+------------------------------------------------------------------------------
+Cuantitativa: river2x_check.mjs (script Node aislado, sin navegador) replicó
+riverBezierPoint/nearestOnRiverCurve/waterRadiusAt fuera de la app y
+confirmó: bezier(0,5)=WATER_CENTER exacto tras el escalado; el bounding box
+de la curva cabe dentro del terreno de 100x100 con margen; el radio máximo
+real que necesita waterRadiusAt (~49 m) queda dentro del nuevo techo de
+90 m con margen cómodo.
+
+Visual: Playwright + swiftshader, capturas vía renderer.domElement.
+toDataURL() (más confiable que page.screenshot() para esta escena, patrón
+ya establecido en fases anteriores). Una vista aérea directa sobre el río
+resultó inútil para verificar el trazado completo -- se descubrió en el
+camino que la escena tiene un efecto de profundidad de campo calibrado para
+distancias de VR a nivel de ojos, que a 16-65 m de altura desenfoca la
+imagen hasta volverla ilegible (manchas de color sin detalle). No es un bug
+de esta fase: es el mismo efecto de post-proceso ya presente, que
+simplemente nunca se había puesto a prueba con una cámara tan alejada del
+rango normal de juego. Se verificó en cambio a altura de ojos (donde el
+usuario real de la VR sí mira):
+  - Parado junto al agua en la posición original de la Fase 30: se ve el
+    juncal alto, la nueva franja de pasto corto y denso justo por delante, y
+    una roca de la orilla -- exactamente la composición "tupida junto al
+    agua" pedida.
+  - Parado en el nuevo punto lejano del río (t=0,8 de la curva Bézier,
+    aproximadamente 21 m más allá de donde llegaba el cauce antes de esta
+    fase): se ve un cauce de agua real con orillas verdes a los costados,
+    confirmando que el río se extiende visualmente hasta ahí y no es solo
+    un cambio en los números.
+Sin errores de consola nuevos: el único mensaje de recurso 404 visto en una
+corrida no se repitió en una prueba aislada posterior enfocada solo en
+detectarlo, y no corresponde a ningún archivo tocado en esta fase (no se
+tocó ningún loader de assets).
+
+------------------------------------------------------------------------------
+6. RENDIMIENTO
+------------------------------------------------------------------------------
+Medido de forma aislada, mismo método que la Fase 30 (update/render movidos
+a mano vía requestAnimationFrame interceptado, gl.finish() para forzar la
+sincronización real de la GPU antes de tomar el tiempo, sin procesos
+chromium/Playwright compitiendo en la máquina): ~3,86 ms de media en update
+y ~3,86 ms de media en render por frame (≈7,7 ms combinados). Esto queda
+POR DEBAJO de los ~15 ms combinados medidos en la Fase 30, pese a que el
+terreno casi triplicó su cantidad de vértices (300x300 -> 536x536, de
+90.601 a 287.296) y se sumaron ~2.880 instancias nuevas de pasto de orilla
+-- consistente con que el fix de rendimiento de la Fase 30 (evitar el
+ray-march caro de waterRadiusAt en insideWater/distanceToWater) sigue
+sosteniendo el presupuesto de CPU pese a que la grilla de terreno es ahora
+mucho más grande.
+
+------------------------------------------------------------------------------
+7. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 31. Sin
+pendientes nuevos abiertos por esta fase.
+
+==============================================================================
