@@ -941,3 +941,173 @@ por frame (5,52 ms de media / 11,8 ms de máximo en el barrido de 360°,
 cámaras QC sanas).
 
 ==============================================================================
+
+ZAPICÁN — FASE 30 · RÍO CURVO, SAUCE A ESCALA REAL Y ECOSISTEMA RIBEREÑO
+==============================================================================
+Snapshot: ZAPICAN_v107_rio_curvo (antes: v106_sauce_real, Fase 29).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+Cinco pedidos del usuario en esta fase, en orden:
+  1) "revisa los tamaños, hay arvoles mas grandes que otros, deben tener su
+     tamaño natural, ademas controla los brillos, las sombras en donde esta
+     el sol" -- revisión de proporciones de árboles y de brillo/rugosidad de
+     materiales.
+  2) "que la laguna sea mas un río del estilo uruguayos, rio poco caudaloso
+     estrecho" -- convertir la laguna circular en un río angosto de bajo
+     caudal.
+  3) "el rio debe hace una pequeña curba en uno de los angulos del terreno
+     no debe ser recto casi artificial, debe ser algo serpetiante o
+     levemente" -- el río no debe verse recto/artificial, necesita una
+     curva.
+  4) "que sea mas largo el rio 4 veces mas largo y el sauce por lo que veo
+     debe ser mucho mas grande, averigua el tamaño normal en comparacion
+     con los humanos" -- 4x más largo, e investigar el tamaño real del
+     sauce criollo.
+  5) "No piedee haber arboles dentro del agua, si juncos como la foto que
+     te pase. Faltan rocas de distinto tamaño tines o te subo? Debe ser mas
+     tupido cerca del agua y mas despejado alejándose de ella." -- ningún
+     árbol dentro del agua (solo juncos), rocas de distinto tamaño, y
+     gradiente de densidad de vegetación (tupido cerca del agua, despejado
+     lejos).
+
+------------------------------------------------------------------------------
+2. FORMA DEL AGUA: DE LAGUNA CIRCULAR A RÍO CURVO
+------------------------------------------------------------------------------
+El sistema de agua original era un círculo (WATER_RADIUS constante,
+waterRadiusAt(angle) devolvía siempre el mismo valor). Se preservó
+deliberadamente la firma de esa función a través de 3 rediseños sucesivos,
+porque unos 40 puntos del archivo la consumen (insideWater, contorno de
+orilla, malla de agua, ubicación de juncos/ceibos/sauces/carpinchos):
+
+  a) Franja recta angosta ("estilo uruguayo, poco caudaloso"): se reemplazó
+     el radio constante por un ancho de franja (RIVER_WIDTH_HALF = 1,0 m)
+     a lo largo de un eje recto.
+  b) Forma "estadio" (rectángulo con casquetes semicirculares en las
+     puntas): fórmula cerrada (stadiumRadiusLocal) para evitar que el radio
+     saltara de golpe en las puntas del río.
+  c) Curva de Bézier cuadrática (forma final, pedido 3): 3 puntos de
+     control (A, C, E), con C resuelto algebraicamente para que
+     bezier(0,5) caiga exactamente en WATER_CENTER -- así cualquier rayo
+     desde el centro cruza la franja de agua una sola vez, condición
+     necesaria para que "un radio por ángulo" siga siendo válido sobre una
+     forma no convexa. Se agregó un muestreo de 97 puntos sobre la curva
+     (riverCurvePoints, RIVER_CURVE_SAMPLES=96) y una función de distancia
+     punto-a-segmento más cercana (nearestOnRiverCurve) para las
+     comprobaciones de proximidad baratas (ver sección 5, rendimiento).
+
+------------------------------------------------------------------------------
+3. LARGO DEL RÍO Y TAMAÑO DEL TERRENO (pedido 4)
+------------------------------------------------------------------------------
+Multiplicar el río x4 (de un extremo a otro de ~15 m a ~44,7 m en línea
+recta entre los puntos de control A y E) no entraba en el terreno de 30x30
+m original. Se escalaron juntas todas las constantes dependientes:
+  - groundGeo (PlaneGeometry): 30x30 -> 56x56 m, 160x160 -> 300x300
+    segmentos (misma densidad de detalle relativa).
+  - GROUND_SIZE: 30 -> 56; GROUND_SEGS: 160 -> 300 (usadas por
+    dispAtVertex/displacementAt para altura de terreno).
+  - REPEAT (repetición de textura): 6 -> 11,2 (proporción 56/30), para que
+    el tamaño aparente de la textura del suelo no cambiara.
+
+------------------------------------------------------------------------------
+4. SAUCE CRIOLLO: TAMAÑO REAL INVESTIGADO (pedido 4)
+------------------------------------------------------------------------------
+El usuario pidió confirmar el tamaño real del sauce criollo (Salix
+humboldtiana) comparado con un humano. Investigación (Flora Bonaerense,
+ArgentiNat): el sauce criollo mide normalmente 10-12 m de altura en la
+región (hasta 25 m en condiciones excepcionales en otras zonas). La escala
+en la escena, que había quedado en 3,0-3,6 m (equiparada por error a
+ombú/ceibo/butiá en un ajuste anterior de esta misma fase, pensando que era
+un problema de brillo/escala fuera de lugar), se corrigió a 10,5-12,5 m
+(10,5 + rng()*2,0), la base de la investigación.
+Ajustes relacionados:
+  - Ubicación: cambiada de waterOutlinePoint(angle, escala multiplicativa)
+    a waterOutlinePointOffset(angle, 0,4 + rng()*0,6) -- desplazamiento en
+    metros absolutos desde el borde del agua, no un factor de escala (un
+    factor multiplicativo se vuelve inestable sobre una forma alargada:
+    el mismo factor relativo da desplazamientos absolutos muy distintos
+    según el radio local, mínimos cerca de los lados angostos y enormes
+    cerca de las puntas de la curva).
+  - Radio de exclusión para otras plantas cerca de la base del sauce
+    (contactPoints): 0,7/1,05 m -> 8,0/1,3 m, acorde a la copa mucho más
+    grande.
+  - Material del follaje (onModel hook, willowFoliageFix): roughness 0,88,
+    metalness 0,02, roughnessMap/metalnessMap anulados -- corrige un
+    brillo metálico fuera de estilo respecto al resto de la vegetación de
+    la escena (parte del pedido 1, "controla los brillos").
+
+------------------------------------------------------------------------------
+5. RENDIMIENTO: BUG CRÍTICO EN insideWater/distanceToWater
+------------------------------------------------------------------------------
+Al migrar a la curva de Bézier, waterRadiusAt(angle) (que resuelve el radio
+por marcha de rayo + bisección: pasos de 0,25 m hasta 60 m más 20
+iteraciones de bisección, ~25.000 operaciones por llamada) quedó como la
+única forma de obtener un punto exacto del borde para un ángulo dado --
+correcto y necesario para los ~350 puntos que sí necesitan un punto exacto
+del borde (juncos, ceibos, sauces, contorno visual).
+
+Pero insideWater(x,z) y distanceToWater(x,z) -- que solo necesitan saber
+QUÉ TAN CERCA está un punto del agua, no un punto exacto del borde --
+seguían llamando a waterRadiusAt(angle) internamente. distanceToWater se
+ejecuta una vez por cada vértice del terreno (90.601 vértices en la grilla
+300x300 nueva) e insideWater se ejecuta en los bucles de reintento de
+scattering de vegetación (miles de intentos). El resultado fueron cuelgues
+extremos de carga de página (una medición llegó a correr 40+ minutos antes
+de cancelarla manualmente) -- potencialmente miles de millones de
+operaciones.
+Corrección: ambas funciones se reescribieron para usar directamente
+nearestOnRiverCurve(x,z) (O(96) por llamada, la distancia punto-a-segmento
+más cercana sobre el muestreo de la curva), sin pasar por la marcha de
+rayo. Medición final aislada tras la corrección: ~7,46 ms de media en
+update y ~7,62 ms de media en render por frame (≈15 ms combinados),
+dentro del margen ya tolerado en fases anteriores.
+
+------------------------------------------------------------------------------
+6. ÁRBOLES DENTRO DEL AGUA Y DENSIDAD ECOLÓGICA (pedido 5)
+------------------------------------------------------------------------------
+El buffer de exclusión de agua de monteDensity/matorralDensity estaba
+calibrado para la laguna circular pequeña original y dejaba troncos de
+monte a 0,5-2,9 m del borde del río nuevo -- dentro del radio de vuelo de
+copa (hasta ~2,4 m), es decir, follaje colgando sobre el agua.
+Corrección: smoothstep(1.2, 4.0, dw) -> smoothstep(3.0, 6.0, dw) en
+monteDensity, y smoothstep(0.6, 2.2, dw) -> smoothstep(1.5, 3.0, dw) en
+matorralDensity (dw = distanceToWater). Verificado con un script aislado
+que replica la matemática de la curva contra un volcado real de
+window.__treePositions: 0 árboles de monte a menos de 3 m del agua tras la
+corrección (antes, varios entre 0,5 y 2,9 m).
+Placement de ceibos también migrado de waterOutlinePoint (multiplicativo)
+a waterOutlinePointOffset (metros absolutos), mismo motivo que el sauce.
+Densidad de juncos (los únicos que sí deben tocar el agua) aumentada de 30
+a 140 matas (REED_CLUMPS) para que la orilla se vea tupida como en la foto
+de referencia del usuario.
+
+------------------------------------------------------------------------------
+7. ROCAS DE DISTINTO TAMAÑO (pedido 5)
+------------------------------------------------------------------------------
+El usuario preguntó "Faltan rocas de distinto tamaño tines o te subo?".
+Investigación: las rocas YA estaban implementadas (ROCK_COUNT = 30,
+rock.glb vía InstancedMesh) pero eran invisibles en la práctica por un bug
+de escala heredado: `const scaleFactor = (0.35 + rng() * 1.3) * 0.001;` --
+el `* 0.001` de más (probablemente copiado de otra unidad) dejaba cada
+instancia en ~0,0002-0,0007 m, subpíxel a cualquier distancia de cámara.
+Corregido eliminando el factor erróneo.
+Además, se agregó un segundo lote de 40 rocas (ROCK_RIVERBANK_COUNT) a lo
+largo del perímetro del río, usando waterOutlinePointOffset(angle, -0,3 a
+1,7 m) y un rango de escala más amplio (0,3 a 3,2) para variedad de
+tamaños concentrada cerca de la orilla, tal como pidió el usuario.
+El usuario subió también un archivo 006-rock-lp.zip (mismo nombre que el
+asset rock.glb ya en uso, de waffen2009, CC-BY-4.0) para revisar si
+contenía variantes de roca adicionales.
+
+------------------------------------------------------------------------------
+8. CIERRE
+------------------------------------------------------------------------------
+006-rock-lp.zip inspeccionado (scene.gltf + scene.bin + texturas):
+contiene una única malla (Object_0), el mismo asset "006-rock-lp" de
+waffen2009 (CC-BY-4.0) ya integrado como rock.glb -- no trae variantes de
+roca adicionales. La variedad de tamaños de la escena viene enteramente
+del rango de escala aleatoria ya implementado (0,3 a 3,2), no de mallas
+distintas.
+
+==============================================================================
