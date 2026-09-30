@@ -1236,3 +1236,101 @@ con ningún archivo tocado en esta fase).
 CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 31.
 
 ==============================================================================
+
+ZAPICÁN — FASE 32 · ANIMACIÓN DE GUARDIA PERPETUA (EL CENTINELA Y SEGUNDA ESTATUA)
+==============================================================================
+Snapshot: ZAPICAN_v109_centinela_idle (antes: v108_rio_2x, Fase 31).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+El usuario compartió un video de referencia de entornos y aclaró: "Solo era
+para que vieras el entorno las figuras indígenas que tenemos están bien solo
+que debemos animarías un poco" -- es decir, no pidió reemplazar ni rehacer
+las figuras (El Centinela, la segunda estatua, guerrero_animado), solo
+agregarles algo más de animación.
+
+------------------------------------------------------------------------------
+2. DIAGNÓSTICO
+------------------------------------------------------------------------------
+No pude ver el video de referencia (una URL de YouTube renderizada por
+JavaScript no se puede leer con un fetch simple -- solo devuelve el pie de
+página del sitio, sin título, descripción ni contenido). Se le preguntó al
+usuario cómo prefería avanzar; su respuesta aclaró que el pedido real era
+mucho más acotado de lo que parecía.
+
+Estado real de la animación de las figuras, encontrado al revisar el código:
+  - El Centinela: arranca como estatua estática (pedido explícito de fases
+    anteriores), "despierta" a los 20 s y camina 13 s con un ciclo de
+    piernas/brazos animado a mano por huesos (sin clip de Mixamo en el
+    archivo). Al terminar de caminar, sin embargo, quedaba CONGELADO para
+    siempre en la pose neutra -- tan inmóvil como antes de despertar, el
+    resto de la sesión.
+  - Segunda estatua (decorativa): 100% estática desde que se agregó en la
+    Fase 20 -- nunca tuvo ninguna animación, ni mecánica de despertar (a
+    pedido explícito del usuario en esa fase, "otro centinela más,
+    decorativo").
+Esto explica el pedido: las figuras SÍ están bien (modelos, escala,
+posición), pero pasan la enorme mayoría de la sesión completamente
+inmóviles.
+
+------------------------------------------------------------------------------
+3. IMPLEMENTACIÓN
+------------------------------------------------------------------------------
+El Centinela (después de caminar): se agregó una animación de guardia
+perpetua en vez de congelarse -- respiración sutil en los brazos (ciclo de
+~4 s), cambio de peso muy lento entre las piernas (~10 s) y un giro de
+torso lento de vigilancia (~12,5 s), como si escaneara el territorio.
+Reutiliza EXACTAMENTE los mismos huesos y ejes de rotación ya validados
+para la caminata (mixamorigLeftArm/RightArm en X, mixamorigSpine en Y,
+mixamorig(Left|Right)UpLeg en X) -- nunca un eje nuevo sin probar contra
+este esqueleto en particular, dado el historial de esta malla con
+inverseBindMatrices rotas (ver Fase 20: rotar los brazos en Z, por
+ejemplo, deforma el mesh en una tira larga). Las amplitudes de la nueva
+animación de guardia son pequeñas y se sostienen alrededor de la MISMA
+pose neutra en la que termina la caminata (swing=0, brazos en -IDLE_ARM_X),
+así que no hay salto visible al pasar de "caminando" a "en guardia".
+
+Segunda estatua: al ser un único mesh sin esqueleto (a diferencia de El
+Centinela), no hay huesos que animar -- se le agregó en cambio un giro
+lento y sutil del objeto entero (±2° aproximadamente, ciclo de ~42 s)
+alrededor de su rotación original, dándole la misma sensación de
+vigilancia que El Centinela sin necesitar un rig.
+
+------------------------------------------------------------------------------
+4. VERIFICACIÓN
+------------------------------------------------------------------------------
+Se agregó `window.__centinela()` (mismo patrón que los hooks de depuración
+ya existentes, `window.__fauna`/`window.__tiers`) para leer en vivo el
+estado de ánimo/rotación de ambas figuras.
+
+Un primer intento de verificación con espera real (wall-clock) mostró que
+el reloj interno de la animación (`t`, derivado directamente del timestamp
+del propio requestAnimationFrame) apenas avanzaba pese a decenas de
+segundos reales de espera -- Chromium limita drásticamente la frecuencia
+de requestAnimationFrame en pestañas en segundo plano, y eso es
+exactamente lo que estaba pasando en el navegador headless de Playwright.
+No es un bug de la app ni de esta fase: es el mismo mecanismo por el que
+`quick_perf.mjs` (fases anteriores) ya intercepta requestAnimationFrame a
+mano para medir rendimiento. Se reutilizó esa misma técnica para avanzar
+el reloj simulado en pasos controlados sin depender del tiempo real,
+confirmando que:
+  - `awakened` pasa a `true` y se mantiene así.
+  - `spineY` oscila (ej. -0,0983 a +0,12) -- el giro de vigilancia del
+    torso funciona.
+  - `leftArmX` oscila entre -0,48 y -0,52 -- coincide exactamente con
+    -IDLE_ARM_X (-0,5) ± la amplitud de respiración (±0,02).
+  - `estatua2RotY` oscila (ej. 5,687 a 5,741) alrededor de su rotación
+    base -- el giro de la segunda estatua funciona.
+  - `leftUpLegX` mostró el mismo valor en varias muestras espaciadas
+    exactamente 10 s -- no es un bug, es un alias de muestreo (el período
+    del cambio de peso es exactamente 10 s, así que muestrear cada 10 s
+    siempre cae en la misma fase); confirmado revisando la fórmula.
+Sin errores de consola nuevos.
+
+------------------------------------------------------------------------------
+5. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 32.
+
+==============================================================================

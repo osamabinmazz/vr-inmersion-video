@@ -1,0 +1,135 @@
+ZAPICÁN — FASE 32 · ANIMACIÓN DE GUARDIA PERPETUA (EL CENTINELA Y SEGUNDA ESTATUA)
+==============================================================================
+Snapshot: ZAPICAN_v109_centinela_idle (antes: v108_rio_2x, Fase 31).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+El usuario compartió un enlace de YouTube ("aca se puede ver los entornos, no
+has caso a las figuras indígenas ya que son caricaturas") sugiriendo en un
+primer momento que las figuras indígenas necesitaban rehacerse. No pude ver
+el contenido del video (ver sección 2). Le presenté opciones al usuario para
+decidir cómo avanzar sin poder ver la referencia; su respuesta aclaró el
+pedido real: "Solo era para que vieras el entorno las figuras indígenas que
+tenemos están bien solo que debemos animarías un poco" -- el video era solo
+para mostrar el tipo de entorno, no una crítica a las figuras. El pedido
+efectivo quedó reducido a: agregarles algo más de animación a las figuras
+existentes (El Centinela, segunda estatua), sin tocar los modelos en sí.
+
+------------------------------------------------------------------------------
+2. LIMITACIÓN DE HERRAMIENTAS: NO SE PUDO VER EL VIDEO
+------------------------------------------------------------------------------
+Un intento de WebFetch sobre la URL de YouTube (tras seguir el redirect de
+youtu.be a youtube.com) solo devolvió el pie de página estático del sitio
+(enlaces "About", "Press", "Copyright", etc.) -- YouTube renderiza el título,
+la descripción y el reproductor con JavaScript del lado del cliente, que un
+fetch simple no ejecuta. No hay ninguna herramienta disponible en esta sesión
+capaz de reproducir video ni extraer fotogramas, así que fue imposible
+comparar el video de referencia contra la escena directamente. Se le
+comunicó esta limitación al usuario en vez de adivinar el contenido del
+video.
+
+------------------------------------------------------------------------------
+3. DIAGNÓSTICO DEL ESTADO REAL DE ANIMACIÓN
+------------------------------------------------------------------------------
+Revisando el código de las tres figuras humanas de la escena:
+  - El Centinela (estatua_centinela.glb / guerrero_animado.glb, Fase 20):
+    arranca como estatua estática (pedido explícito de esa fase), "despierta"
+    a los 20 s de iniciado el render loop, camina 13 s con un ciclo de
+    piernas/brazos animado a mano rotando huesos por nombre (el archivo
+    guerrero_animado.glb no trae ningún clip de animación de Mixamo), y al
+    terminar de caminar queda CONGELADO en la pose neutra para el resto de
+    la sesión -- tan inmóvil como la estatua original, sin ninguna señal de
+    que sigue "vivo".
+  - Segunda estatua (estatua_centinela2.glb, Fase 25): 100% estática desde
+    que se agregó -- nunca tuvo ninguna mecánica de animación, a pedido
+    explícito del usuario en esa fase ("otro centinela más, decorativo").
+Esto confirma la respuesta del usuario: las figuras en sí (mallas, escala,
+posición, iconografía) están bien -- lo que falta es que se muevan más allá
+de los 13 segundos puntuales de caminata de El Centinela.
+
+------------------------------------------------------------------------------
+4. IMPLEMENTACIÓN
+------------------------------------------------------------------------------
+El Centinela -- animación de guardia perpetua tras el final de la caminata,
+en vez de congelarse:
+  - Respiración sutil en los brazos, ciclo de ~4 s.
+  - Cambio de peso muy lento entre las piernas, ciclo de ~10 s.
+  - Giro de torso lento de vigilancia, ciclo de ~12,5 s -- como si escaneara
+    el territorio, temáticamente apropiado para un "centinela".
+Reutiliza EXACTAMENTE los mismos huesos y ejes ya validados durante la
+caminata (mixamorigLeftArm/RightArm en X, mixamorigSpine en Y,
+mixamorig(Left|Right)UpLeg en X) -- deliberadamente NO se probó ningún eje
+nuevo, dado el historial conocido de este esqueleto en particular (Fase 20:
+las inverseBindMatrices del archivo estaban rotas/corruptas y se corrigieron
+en tiempo de carga; además, rotar los brazos en Z estira el mesh en una tira
+larga y deforme, confirmado en esa fase con una grilla de comparación
+aislada). Las amplitudes son pequeñas y parten de la MISMA pose neutra en la
+que termina la caminata, así que no hay salto visual al pasar de "caminando"
+a "en guardia".
+
+Segunda estatua -- al ser un único mesh sin esqueleto (a diferencia de El
+Centinela, no hay huesos que animar), se le agregó un giro lento y sutil del
+OBJETO ENTERO (aproximadamente ±2°, ciclo de ~42 s) alrededor de su rotación
+original -- la única animación posible sin un rig, pero suficiente para que
+deje de leerse como un objeto 100% inerte.
+
+------------------------------------------------------------------------------
+5. VERIFICACIÓN
+------------------------------------------------------------------------------
+Se agregó `window.__centinela()`, un hook de depuración de solo lectura que
+sigue el mismo patrón que los ya existentes en el archivo
+(`window.__fauna`, `window.__tiers`) -- expone en vivo el estado de
+`awakened` y las rotaciones relevantes de ambas figuras.
+
+Complicación encontrada y resuelta: un primer intento de verificación
+esperando tiempo real (Playwright, `page.waitForTimeout`) mostró que el
+reloj interno de la animación (`t`, que se deriva directamente del
+timestamp que entrega el propio `requestAnimationFrame`) apenas avanzaba
+pese a decenas de segundos reales de espera -- las muestras tomadas con 4 s
+de diferencia real mostraban exactamente los mismos valores. Diagnóstico:
+Chromium limita agresivamente la frecuencia de `requestAnimationFrame` en
+pestañas que considera en segundo plano/inactivas, y eso es exactamente lo
+que ocurre por defecto en una página abierta con Playwright en modo
+headless. No es un bug de esta fase ni de la app: es el mismo motivo por el
+que `quick_perf.mjs` (de una fase anterior) ya intercepta
+`requestAnimationFrame` a mano para medir rendimiento sin depender del
+throttling del navegador. Se reutilizó esa misma técnica (interceptar
+`requestAnimationFrame`, avanzar el timestamp simulado en pasos
+controlados) para saltar el throttling por completo.
+
+Con el reloj simulado avanzando libremente, se confirmó:
+  - `awakened` pasa a `true` tras el ciclo de despertar+caminata y se
+    mantiene así indefinidamente.
+  - `spineY` oscila (valores observados entre -0,0983 y +0,12) -- el giro
+    de vigilancia del torso está funcionando.
+  - `leftArmX` oscila entre -0,48 y -0,52 -- coincide exactamente con la
+    pose neutra -IDLE_ARM_X (-0,5) más/menos la amplitud de respiración
+    (±0,02) que se sumó.
+  - `estatua2RotY` oscila (valores observados entre 5,687 y 5,741)
+    alrededor de su rotación base -- el giro de la segunda estatua está
+    funcionando.
+  - `leftUpLegX` mostró el mismo valor exacto en varias muestras separadas
+    por exactamente 10 s de tiempo simulado -- investigado y descartado
+    como bug: el período del cambio de peso es exactamente 10 s, así que
+    muestrear cada 10 s cae siempre en la misma fase de la onda (alias de
+    muestreo de la propia verificación, no un problema de la animación).
+Sin errores de consola nuevos (el único mensaje de recurso 404 visto ya
+apareció en fases anteriores, no relacionado con estos cambios).
+
+Un intento de captura visual del guerrero en su pose de reposo no encontró
+el encuadre correcto -- la cámara de verificación apuntaba a
+WARRIOR_HOME, pero el guerrero termina su caminata ~7 m de ahí (recorre
+WARRIOR_WALK_SPEED × WARRIOR_WALK_DURATION ≈ 7,15 m en la dirección
+WARRIOR_HEADING antes de detenerse). Es un error de encuadre del script de
+verificación, no del código de la escena; dado que la verificación numérica
+ya confirmó el comportamiento correcto de forma inequívoca, no se insistió
+en conseguir la captura visual.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 32. Sin pendientes
+nuevos abiertos por esta fase.
+
+==============================================================================
