@@ -1,0 +1,79 @@
+==============================================================================
+ZAPICÁN — FASE 33 · AGUA SOBRE EL CAUCE REAL, SAUCES FUERA DEL VISOR Y ROCAS A ESCALA
+==============================================================================
+Snapshot: ZAPICAN_v110_rio_real (antes: v109_centinela_idle, Fase 32).
+
+------------------------------------------------------------------------------
+1. PEDIDO
+------------------------------------------------------------------------------
+"continua mejora" / "continua, hasta conseguir la perfeccion": pasada de
+mejora buscando defectos visibles. Se encontraron y corrigieron tres.
+
+------------------------------------------------------------------------------
+2. AGUA Y BARRO ESPEJADOS RESPECTO DEL CAUCE
+------------------------------------------------------------------------------
+Todo el sistema del río (juncos, pasto de orilla, rocas, relieve, humedad,
+salpicaduras) usa z = cz + sin(a)·r. La malla de agua (ShapeGeometry +
+rotateX(-90°)) y la franja de barro terminaban en z = cz - sin(a)·r: el agua
+visible estaba ESPEJADA respecto del cauce sobre el que se plantó todo lo
+demás. Medido con una réplica de la matemática del río: error medio 2,03 m,
+peor caso 21,82 m (el agua cruzaba el pasto y los juncos quedaban en seco).
+Corrección:
+  - Agua: cinta construida directamente sobre la polilínea del cauce
+    (riverStations: 192 tramos + tapas semicirculares en los extremos),
+    7 columnas a lo ancho. Error contra el cauce real: 0.
+  - Profundidad: color por vértice (waterDepthColor) según la distancia al
+    eje: centro verde oscuro, bordes someros más claros/terrosos, con un
+    ruido suave para que no se lea como degradé. Reemplaza la textura
+    radial de laguna, que ya no correspondía a un río largo.
+  - Barro de orilla: dos franjas (una por margen) sobre las mismas
+    estaciones, con ancho en metros (0,3-1,5 m, variable a lo largo).
+
+------------------------------------------------------------------------------
+3. SAUCES ENCIMA DEL PUNTO DE VISTA VR
+------------------------------------------------------------------------------
+Los sauces criollos a escala real (Fase 30: ~9-10 m de alto, copa de
+12-16 m) caían en la orilla a ~4 m del punto de inicio del visor: la cámara
+arrancaba DENTRO de una copa. Ahora:
+  - WILLOW_VIEW_CLEARANCE = 11 m alrededor del punto de vista y 7 m
+    alrededor de cada punto de interés; si el lugar no sirve se corre
+    sobre la orilla (desplazamiento determinista del ángulo, sin consumir
+    números aleatorios extra, así el resto de la escena no cambia).
+  - La inclinación del sauce apunta al punto más cercano del cauce real.
+
+------------------------------------------------------------------------------
+4. ROCAS DE CIENTOS DE METROS (EL "VELO GRIS" QUE TAPABA EL CIELO)
+------------------------------------------------------------------------------
+En todas las tomas, después de que terminaban de cargar los modelos, el
+cielo quedaba tapado por paredes grises borrosas. Un raycast desde la
+cámara identificó la malla: el InstancedMesh de rocas. La geometría cruda
+de rock.glb mide ~450 unidades y viene con Z arriba (el nodo de Sketchfab
+la rota -90° en X); un InstancedMesh usa la geometría SIN esa
+transformación. En la Fase 30 se quitó un *0.001 creyendo que era un bug,
+y las 70 rocas (30 dispersas + 40 de orilla) pasaron a medir entre ~135 y
+~1400 m, encerrando toda la escena.
+Corrección: normalizedRockGeometry() hornea la rotación del nodo, escala a
+0,45 m de ancho de referencia, apoya la base en y = 0 y la entierra un 18 %
+de su alto. Se calcula una vez y la comparten los dos lotes. Rangos finales:
+dispersas ~0,16-0,74 m, de orilla ~0,13-1,44 m (lo pedido: "rocas de
+distinto tamaño").
+
+------------------------------------------------------------------------------
+5. VERIFICACIÓN
+------------------------------------------------------------------------------
+Capturas headless (Chromium + SwiftShader, 60 s de espera para que carguen
+texturas y modelos): inicio del visor con cielo azul y nubes, rocas chicas y
+medianas en el suelo; vista elevada con el cauce serpenteante, sauces sobre
+la orilla y la llanura hasta el horizonte; orilla de cerca con el agua
+exactamente entre las dos franjas de barro. Sin errores de consola de la
+app. Sintaxis verificada (node --check).
+
+Pendiente posible: el río termina en tapas redondeadas dentro del campo;
+podría prolongarse hasta salir del terreno.
+
+------------------------------------------------------------------------------
+6. CIERRE
+------------------------------------------------------------------------------
+CREDITS_MODELOS_3D.txt actualizado con la sección de Fase 33.
+
+==============================================================================
