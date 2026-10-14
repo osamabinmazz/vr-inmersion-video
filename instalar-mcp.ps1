@@ -1,4 +1,4 @@
-# Instala los MCP Context7, Playwright y Firecrawl para todos tus proyectos
+# Instala los MCP Context7, Playwright, Firecrawl y Composio para todos tus proyectos
 # (scope "user"). Se puede correr varias veces sin duplicar nada.
 # Uso: clic derecho -> "Ejecutar con PowerShell"
 
@@ -56,6 +56,18 @@ if (Instalado "firecrawl") {
         Write-Host "-    firecrawl salteado (volvé a correr el script cuando tengas la clave)"
     } else {
         Agregar "firecrawl" @("-e", "FIRECRAWL_API_KEY=$clave", "--", "cmd", "/c", "npx", "-y", "firecrawl-mcp")
+    }
+}
+
+if (Instalado "composio") {
+    Ok "composio ya estaba instalado, lo dejo como está"
+} else {
+    Write-Host "Composio: entrá a https://composio.dev, creá tu servidor MCP y copiá la URL que te da."
+    $url = Read-Host "URL de Composio (Enter para saltear)"
+    if ([string]::IsNullOrWhiteSpace($url)) {
+        Write-Host "-    composio salteado (volvé a correr el script cuando tengas la URL)"
+    } else {
+        Agregar "composio" @("--transport", "http", $url)
     }
 }
 

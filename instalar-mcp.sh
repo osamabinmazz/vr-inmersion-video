@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instala los MCP Context7, Playwright y Firecrawl para todos tus proyectos
+# Instala los MCP Context7, Playwright, Firecrawl y Composio para todos tus proyectos
 # (scope "user"). Se puede correr varias veces sin duplicar nada.
 # Uso: bash instalar-mcp.sh
 
@@ -52,6 +52,18 @@ else
     echo "-  firecrawl salteado (volvé a correr el script cuando tengas la clave)"
   else
     agregar firecrawl -e "FIRECRAWL_API_KEY=$FIRECRAWL_KEY" -- npx -y firecrawl-mcp
+  fi
+fi
+
+if instalado composio; then
+  echo -e "$OK composio ya estaba instalado, lo dejo como está"
+else
+  echo "Composio: entrá a https://composio.dev, creá tu servidor MCP y copiá la URL que te da."
+  read -r -p "URL de Composio (Enter para saltear): " COMPOSIO_URL
+  if [ -z "$COMPOSIO_URL" ]; then
+    echo "-  composio salteado (volvé a correr el script cuando tengas la URL)"
+  else
+    agregar composio --transport http "$COMPOSIO_URL"
   fi
 fi
 
