@@ -14,6 +14,11 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
 fi
 echo -e "$OK Node.js $(node --version)"
 
+# El instalador nativo deja claude en ~/.local/bin y no siempre lo suma al PATH
+if ! command -v claude >/dev/null 2>&1 && [ -x "$HOME/.local/bin/claude" ]; then
+  export PATH="$PATH:$HOME/.local/bin"
+fi
+
 if ! command -v claude >/dev/null 2>&1; then
   echo -e "$FAIL Claude Code no está instalado. Instalalo con: npm install -g @anthropic-ai/claude-code"
   exit 1

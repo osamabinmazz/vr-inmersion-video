@@ -20,6 +20,12 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command 
 }
 Ok "Node.js $(node --version)"
 
+# El instalador nativo deja claude en .local\bin y no siempre lo suma al PATH
+$localBin = Join-Path $env:USERPROFILE ".local\bin"
+if (-not (Get-Command claude -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $localBin "claude.exe"))) {
+    $env:Path += ";$localBin"
+}
+
 if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
     Fail "Claude Code no está instalado. Instalalo con: npm install -g @anthropic-ai/claude-code"
     Terminar 1
